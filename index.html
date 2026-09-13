@@ -1,0 +1,57 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#101112"/><link rel="icon" href="/favicon.svg"/>
+<link rel="preload" as="image" href="/menu/night-alley-clean.png"/>
+<link rel="preload" as="font" type="font/ttf" href="/fonts/BarlowCondensed-ExtraBold.ttf" crossorigin/>
+<link rel="stylesheet" href="/src/ui/menu.css"/><title>午夜追缉 · MIDNIGHT PURSUIT</title>
+</head>
+<body class="menu-open">
+<div id="app"></div><div id="crosshair"></div>
+<main id="menu" aria-label="游戏主菜单">
+<div class="hero-art" aria-hidden="true"><img src="/menu/night-alley-clean.png" alt="" fetchpriority="high"/><div class="art-shade"></div><div class="light-leak"></div></div>
+<div class="film-grain" aria-hidden="true"></div>
+<header class="menu-top">
+<div class="brand"><svg viewBox="0 0 36 36" aria-hidden="true"><path d="M3 28 12 8h8l-9 20zm14 0L26 8h7l-9 20z" fill="currentColor"/></svg><span>午夜追缉<small>MIDNIGHT PURSUIT</small></span></div>
+<nav aria-label="首页导航"><span class="nav-current">故事序章 <i></i></span><button id="guide-btn" aria-haspopup="dialog">操作指南 <span>↗</span></button></nav>
+  <div class="menu-preferences"><button id="music-btn" aria-pressed="false" aria-label="切换首页音乐与交互音效">♫ <span>开启音乐</span></button><button id="motion-btn" aria-pressed="true" aria-label="切换首页动态效果"><span class="equalizer" aria-hidden="true"><i></i><i></i><i></i><i></i></span>动态效果 <span id="motion-state">开</span></button></div>
+</header>
+<div class="hero-body">
+<div class="hero-kicker"><span class="live-dot"></span> AN OPEN WORLD. A PERSONAL VENDETTA. <span class="issue">VOL. 01 / 夜幕之下</span></div>
+<h1 aria-label="午夜追缉 Midnight Pursuit"><span class="title-row">MIDNIGHT<span class="title-star" aria-hidden="true">✳</span></span><span class="title-row title-second">PURSUIT<span class="title-period">.</span></span></h1>
+<div class="hero-copy"><p class="story-label"><span>故事模式</span> / 夺回你的城市</p><h2>他们偷走了你的车。<br>现在，<em>把夜晚抢回来。</em></h2><p class="synopsis">穿过霓虹，甩掉警笛。<br>从码头帮手里，拿回属于你的东西。</p>
+<button id="start-btn" disabled><span class="play-icon" aria-hidden="true">▶</span><span id="start-label">正在准备城市…</span><span class="button-end" aria-hidden="true">↗</span></button>
+<p class="input-note"><kbd>W A S D</kbd> 移动 <span>·</span> <kbd>E</kbd> 上车 <span>·</span> 键鼠游玩</p></div>
+<div class="art-label" aria-hidden="true"><span class="cross-mark">+</span><div>NO RULES AFTER DARK.<small>04:00 AM — 海岸城区</small></div><span class="label-line"></span></div>
+<div class="vertical-note" aria-hidden="true">LOSE THE COPS. FIND YOUR FREEDOM.</div>
+</div>
+<div class="chapter-strip" aria-label="游戏内容">
+<div class="chapter-intro"><span>YOUR NIGHT.<br>YOUR RULES.</span><small>一座城，任你闯。</small></div>
+<div class="chapter active"><span class="chapter-no">01</span><div><small>TAKE IT BACK</small><h3>夺回爱车</h3></div><span class="chapter-icon" aria-hidden="true">↗</span></div>
+<div class="chapter"><span class="chapter-no">02</span><div><small>BREAK THE PURSUIT</small><h3>甩掉追兵</h3></div><span class="chapter-icon" aria-hidden="true">⌁</span></div>
+<div class="chapter"><span class="chapter-no">03</span><div><small>OWN THE STREETS</small><h3>自由探索</h3></div><span class="chapter-icon" aria-hidden="true">↗</span></div>
+</div>
+<footer class="menu-bottom"><span class="load-wrap"><i></i><span id="load-status" role="status">正在加载场景资源</span></span><span class="footer-center">单人开放世界 <span>·</span> 故事序章</span><button id="credits-btn" aria-haspopup="dialog">设计与素材来源 ↗</button></footer>
+</main>
+<dialog id="guide-dialog" aria-labelledby="guide-title">
+<div class="dialog-top"><span>FIELD GUIDE / 01</span><button id="guide-close" aria-label="关闭操作指南">✕</button></div>
+<h2 id="guide-title">进入街头之前。</h2><p class="guide-intro">跟随金色光柱与方向箭头，寻找失窃的爱车。</p>
+<div class="guide-grid">
+<section><h3>01 · 徒步探索</h3><p><kbd>W A S D</kbd> 移动 <kbd>Shift</kbd> 疾跑</p><p><kbd>Space</kbd> 跳跃 · 鼠标控制视角</p><p><kbd>E</kbd> 上下车 / 靠近路车抢车</p></section>
+<section><h3>02 · 驾驶与逃脱</h3><p><kbd>W / S</kbd> 油门 / 倒车</p><p><kbd>A / D</kbd> 转向 <kbd>Space</kbd> 手刹</p><p>绕到建筑后，脱离警察视线以降低通缉。</p></section>
+<section><h3>03 · 街头生存</h3><p><kbd>1 / 2 / 3</kbd> 切换武器 · 左键开火</p><p><kbd>J / K / L</kbd> 在商店购买物资</p><p>开出租车接客赚钱，喷漆店可修车、消除通缉。</p></section>
+<section><h3>04 · 自由行动</h3><p>海滩外停有快艇，游近后按 <kbd>E</kbd> 驾驶。</p><p><kbd>H</kbd> 游戏指南 <kbd>Esc</kbd> 释放鼠标</p><p>开始后将尝试进入全屏与鼠标锁定。</p></section>
+</div><form method="dialog"><button class="guide-done">准备出发 <span>↗</span></button></form></dialog>
+<dialog id="credits-dialog" aria-labelledby="credits-title"><div class="dialog-top"><span>DESIGN CREDITS</span><button id="credits-close" aria-label="关闭素材来源">✕</button></div><h2 id="credits-title">灵感与创作者。</h2>
+<p>首页布局改编参考 <a href="https://github.com/prabhsingh20/Zentry" target="_blank" rel="noopener noreferrer">Prabhjot Singh 的 Zentry 开源实现</a>，采用 <a href="/licenses/zentry-MIT.txt" target="_blank" rel="noopener noreferrer">MIT 许可</a>。</p>
+<p>封面视觉：<a href="https://unsplash.com/photos/tADpuhqqeHk" target="_blank" rel="noopener noreferrer">itsiken / Unsplash</a>，采用 <a href="https://unsplash.com/license" target="_blank" rel="noopener noreferrer">Unsplash 免费图片许可</a>。现背景经 AI 去车修复，用于独立车辆动画合成，非游戏实机截图。</p>
+<p>开场跑车：<a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept" target="_blank" rel="noopener noreferrer">Car Concept / Eric Chadwick，Darmstadt Graphics Group GmbH（2024）</a>，采用 <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>。本项目调整材质、车轮并添加漂移动画。</p><p>英文字体：Barlow Condensed，采用 <a href="/licenses/barlow-OFL.txt" target="_blank" rel="noopener noreferrer">SIL Open Font License 1.1</a>。</p>
+  <p>游戏内 Ferrari 458 Italia：<a href="https://threejs.org/examples/webgl_materials_car.html" target="_blank" rel="noopener noreferrer">Three.js 车辆示例</a>，模型作者 <a href="https://sketchfab.com/models/57bf6cc56931426e87494f554df1dab6" target="_blank" rel="noopener noreferrer">vicent091036</a>。<a href="/licenses/ferrari-source.md" target="_blank" rel="noopener noreferrer">素材来源记录</a>。</p>
+  <p>首页音乐：System Overload（154 BPM），Alexander Ehlers / tricksntraps，来自 <a href="https://opengameart.org/content/t-t-free-cyberpunk-pack-2" target="_blank" rel="noopener noreferrer">T &amp; T Free Cyberpunk Pack 2</a>，采用 CC0。按钮音效由程序合成。</p>
+  <p>首页无人机：<a href="https://sketchfab.com/3d-models/flying-drone-2ecfb55304a043a2a86353f70cc1cf92" target="_blank" rel="noopener noreferrer">Flying Drone — Chistodrako._.（oscar.lopez.riviello）</a>，Creative Commons Attribution。已调整材质兼容性、显示尺寸并添加鼠标交互。</p>
+  <form method="dialog"><button class="guide-done">返回首页 <span>↗</span></button></form></dialog>
+<script type="module" src="/src/ui/menuControls.ts"></script><script type="module" src="/src/main.ts"></script>
+</body></html>
+
+

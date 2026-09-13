@@ -1,0 +1,56 @@
+# Material file for bike.obj
+
+newmtl rubber
+	Ns 0
+	d 1
+	illum 2
+	Kd 0.1 0.1 0.1
+	Ks 0.0 0.0 0.0
+	Ka 0.1 0.1 0.1
+	map_Kd rubber.png
+
+newmtl titan
+	Ns 50
+	d 1
+	illum 2
+	Kd 0.3 0.3 0.3
+	Ks 0.4 0.4 0.4
+	Ka 0.1 0.1 0.1
+	map_Kd metal.png
+
+newmtl framepaint
+	Ns 21
+	d 1
+	illum 2
+	Kd 0.5 0.2 0.2
+	Ks 0.24 0.0 0.0
+	Ka 0.1 0.05 0.05
+	map_Kd chrome.png
+
+newmtl guts
+	Ns 0
+	d 1
+	illum 2
+	Kd 0.1 0.1 0.1
+	Ks 0.0 0.0 0.0
+	Ka 0.05 0.05 0.05
+	map_Kd metal.png
+
+newmtl chrome
+	Ns 42
+	d 1
+	illum 2
+	Kd 0.2 0.2 0.2
+	Ks 0.89 0.89 0.89
+	Ka 0.2 0.2 0.2
+	map_Kd chrome.png
+
+newmtl exhaust
+	Ns 0
+	d 1
+	illum 2
+	Kd 0.4 0.4 0.2
+	Ks 0.0 0.0 0.0
+	Ka 0.2 0.2 0.2
+	map_Kd metal.png
+

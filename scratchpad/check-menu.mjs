@@ -1,0 +1,53 @@
+import { chromium } from 'file:///C:/Users/17920/AppData/Local/npm-cache/_npx/c61c9351a0dbcfa7/node_modules/playwright/index.mjs';
+const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('http://127.0.0.1:5175/', { waitUntil: 'networkidle' });
+  await page.locator('#start-btn').waitFor();
+  await page.waitForFunction(() => !document.querySelector('#start-btn').disabled);
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(1200);
+  if (!await page.locator('.hero-art img').evaluate(img => img.complete && img.naturalWidth > 0)) throw new Error('Cover image not loaded');
+  await page.screenshot({ path: 'scratchpad/menu-desktop.png' });
+  await page.mouse.move(1080, 360, { steps: 15 });
+  await page.waitForTimeout(500);
+  if (!await page.locator('#menu').evaluate(el => el.classList.contains('pointer-active') && parseFloat(el.style.getPropertyValue('--depth-x')) > 0)) throw new Error('Pointer parallax failed');
+  await page.screenshot({ path: 'scratchpad/menu-interactive.png' });
+  const startBox = await page.locator('#start-btn').boundingBox();
+  await page.mouse.move(startBox.x + startBox.width - 30, startBox.y + startBox.height / 2, { steps: 10 });
+  await page.waitForTimeout(150);
+  if (!await page.locator('#start-btn').evaluate(el => parseFloat(el.style.getPropertyValue('--magnet-x')) > 0)) throw new Error('Button magnet failed');
+  await page.locator('#guide-btn').click();
+  if (!await page.locator('#guide-dialog').isVisible()) throw new Error('Guide did not open');
+  if (await page.locator('#menu').evaluate(el => el.classList.contains('pointer-active'))) throw new Error('Pointer effects persisted in dialog');
+  await page.keyboard.press('Escape');
+  if (await page.locator('#guide-dialog').isVisible()) throw new Error('Guide did not close');
+  await page.locator('#credits-btn').click();
+  if (!await page.locator('#credits-dialog').isVisible()) throw new Error('Credits did not open');
+  await page.locator('#credits-close').click();
+  await page.locator('#motion-btn').click();
+  if (await page.locator('#motion-btn').getAttribute('aria-pressed') !== 'false') throw new Error('Motion toggle failed');
+  await page.mouse.move(900, 300, { steps: 10 });
+  if (await page.locator('#menu').evaluate(el => el.classList.contains('pointer-active'))) throw new Error('Pointer effects ignored motion toggle');
+  if (!await page.locator('.hero-art img').evaluate(img => getComputedStyle(img).animationName === 'none')) throw new Error('Motion is still running');
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.screenshot({ path: 'scratchpad/menu-laptop.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: 'scratchpad/menu-mobile.png' });
+  for (const viewport of [{ width: 360, height: 740 }, { width: 768, height: 1024 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    if (!await page.locator('#menu').evaluate(el => el.scrollWidth <= el.clientWidth)) throw new Error('Horizontal overflow: ' + viewport.width);
+  }
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  if (await page.locator('#motion-btn').getAttribute('aria-pressed') !== 'false') throw new Error('Reduced motion preference failed');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('#start-btn').click();
+  await page.waitForFunction(() => document.querySelector('#menu').style.display === 'none');
+  if (await page.locator('.interaction-field, .pointer-reticle').count() !== 0) throw new Error('Menu effects were not disposed');
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: 'scratchpad/menu-started.png' });
+  console.log(JSON.stringify({ result: 'PASS: pointer parallax, magnet, dialog suspension, motion toggle, cleanup, responsive layouts, start transition', errors }));
+  if (errors.length) process.exitCode = 1;
+} finally { await browser.close(); }

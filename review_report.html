@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>开放世界原型 — 游戏设计评审报告</title>
+<style>
+  :root {
+    --bg:#0b0f14; --panel:#141a22; --panel2:#1b232e; --line:#2b3644;
+    --txt:#e6edf3; --dim:#8b98a8; --gold:#ffd34d; --blue:#7fc4ff;
+    --green:#51ff7e; --red:#ff5b5b; --orange:#ff9a3d; --purple:#c792ea; --cyan:#4dffd5;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    background:var(--bg); color:var(--txt);
+    font:15px/1.75 system-ui,"Segoe UI","Microsoft YaHei",sans-serif;
+    padding:0 0 90px; -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 24px; }
+  header {
+    padding:52px 0 30px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#101a26 0%,var(--bg) 100%); margin-bottom:12px; position:relative;
+  }
+  header .badge {
+    position:absolute; top:16px; right:24px; font-weight:600; font-size:12px; letter-spacing:.14em;
+    color:#fff; background:rgba(255,154,61,.16); border:1px solid rgba(255,154,61,.45);
+    padding:3px 12px; border-radius:4px;
+  }
+  h1 { font-size:31px; letter-spacing:.03em; }
+  header .sub { color:var(--dim); margin-top:8px; font-size:14px; }
+  header .meta { color:var(--dim); margin-top:16px; font-size:12.5px; letter-spacing:.05em; }
+  h2 {
+    font-size:21px; margin:52px 0 6px; padding-left:12px; border-left:4px solid var(--blue); scroll-margin-top:20px;
+  }
+  h2 .en { font-size:12px; color:var(--dim); font-weight:400; margin-left:10px; letter-spacing:.1em; }
+  h3 { font-size:16px; margin:26px 0 10px; color:var(--blue); }
+  h4 { font-size:14px; margin:16px 0 6px; color:var(--txt); }
+  .lead { color:var(--dim); margin-bottom:18px; font-size:14px; }
+  p { margin:8px 0; }
+  code {
+    font-family:"Cascadia Mono",Consolas,monospace; font-size:12.5px;
+    background:rgba(127,196,255,.1); color:var(--blue); padding:1px 6px; border-radius:4px;
+  }
+  a { color:var(--blue); }
+
+  nav.toc { display:flex; flex-wrap:wrap; gap:8px; margin:22px 0 8px; }
+  nav.toc a {
+    font-size:13px; text-decoration:none; color:var(--dim);
+    border:1px solid var(--line); background:var(--panel); border-radius:20px; padding:4px 14px;
+  }
+  nav.toc a:hover { color:var(--txt); border-color:var(--blue); }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px; }
+  .grid { display:grid; gap:14px; }
+  .g2 { grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); }
+  .g3 { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+  .g4 { grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); }
+
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .stat .num { font-size:26px; font-weight:700; color:var(--gold); line-height:1.2; }
+  .stat .lab { font-size:12.5px; color:var(--dim); margin-top:2px; }
+
+  .score-row { display:grid; grid-template-columns:150px 1fr 52px; align-items:center; gap:12px; margin:7px 0; }
+  .score-row .name { font-size:13.5px; color:var(--txt); }
+  .bar { height:9px; background:#0e141b; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .bar i { display:block; height:100%; border-radius:5px; }
+  .score-row .val { font-size:12.5px; color:var(--dim); text-align:right; font-variant-numeric:tabular-nums; }
+
+  .flow { display:flex; flex-direction:column; align-items:center; }
+  .node {
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:10px 20px; text-align:center; min-width:250px; max-width:660px;
+  }
+  .node b { color:var(--blue); }
+  .node small { display:block; color:var(--dim); font-size:12.5px; line-height:1.6; }
+  .node.gold { border-color:rgba(255,211,77,.5); } .node.gold b { color:var(--gold); }
+  .node.green { border-color:rgba(81,255,126,.4); } .node.green b { color:var(--green); }
+  .node.red { border-color:rgba(255,91,91,.45); } .node.red b { color:var(--red); }
+  .node.orange { border-color:rgba(255,154,61,.5); } .node.orange b { color:var(--orange); }
+  .arrow { color:var(--dim); font-size:17px; line-height:1.8; text-align:center; }
+
+  .layer { border:1px solid var(--line); border-radius:10px; padding:12px 14px 14px; margin-bottom:10px; background:var(--panel); }
+  .layer > .title { font-size:13px; letter-spacing:.08em; color:var(--dim); margin-bottom:9px; }
+  .layer .mods { display:flex; flex-wrap:wrap; gap:8px; }
+  .mod {
+    background:var(--panel2); border:1px solid var(--line); border-radius:7px; padding:6px 11px; font-size:13px;
+  }
+  .mod small { display:block; color:var(--dim); font-size:11.5px; }
+  .L-core { border-color:rgba(127,196,255,.35); } .L-core .mod { border-color:rgba(127,196,255,.25); }
+  .L-world { border-color:rgba(81,255,126,.28); } .L-world .mod { border-color:rgba(81,255,126,.2); }
+  .L-ent { border-color:rgba(199,146,234,.3); } .L-ent .mod { border-color:rgba(199,146,234,.22); }
+  .L-play { border-color:rgba(255,211,77,.32); } .L-play .mod { border-color:rgba(255,211,77,.24); }
+  .L-ui { border-color:rgba(77,255,213,.28); } .L-ui .mod { border-color:rgba(77,255,213,.2); }
+
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13.5px; }
+  th, td { border:1px solid var(--line); padding:8px 11px; text-align:left; vertical-align:top; }
+  th { background:var(--panel2); color:var(--dim); font-weight:600; font-size:12.5px; letter-spacing:.04em; }
+  td code { font-size:12px; }
+  tbody tr:nth-child(even) { background:rgba(255,255,255,.014); }
+  .tablewrap { overflow-x:auto; }
+
+  .tag {
+    display:inline-block; font-size:11.5px; padding:1px 8px; border-radius:4px;
+    border:1px solid var(--line); color:var(--dim); white-space:nowrap;
+  }
+  .t-p0 { color:var(--red); border-color:rgba(255,91,91,.5); background:rgba(255,91,91,.09); }
+  .t-p1 { color:var(--orange); border-color:rgba(255,154,61,.5); background:rgba(255,154,61,.09); }
+  .t-p2 { color:var(--blue); border-color:rgba(127,196,255,.45); background:rgba(127,196,255,.08); }
+  .t-s { color:var(--cyan); border-color:rgba(77,255,213,.4); background:rgba(77,255,213,.07); }
+  .t-m { color:var(--gold); border-color:rgba(255,211,77,.4); background:rgba(255,211,77,.07); }
+  .t-l { color:var(--purple); border-color:rgba(199,146,234,.45); background:rgba(199,146,234,.08); }
+
+  ul { margin:6px 0 6px 20px; } li { margin:4px 0; }
+  .good li::marker { color:var(--green); }
+  .bad li::marker { color:var(--red); }
+
+  .callout {
+    border-left:3px solid var(--gold); background:rgba(255,211,77,.06);
+    padding:12px 16px; border-radius:0 8px 8px 0; margin:14px 0; font-size:14px;
+  }
+  .callout.blue { border-color:var(--blue); background:rgba(127,196,255,.06); }
+  .callout.red { border-color:var(--red); background:rgba(255,91,91,.06); }
+
+  .prop { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .prop .hd { display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap; }
+  .prop .hd h4 { margin:0; font-size:15px; color:var(--txt); }
+  .prop .desc { font-size:13.5px; color:#c9d4e0; }
+  .prop .foot { margin-top:10px; padding-top:9px; border-top:1px dashed var(--line); font-size:12.5px; color:var(--dim); }
+
+  .seq { font-family:"Cascadia Mono",Consolas,monospace; font-size:12.5px; line-height:1.9; color:#c9d4e0; overflow-x:auto; }
+  .seq .k { color:var(--gold); } .seq .c { color:var(--dim); } .seq .g { color:var(--green); }
+
+  footer { margin-top:60px; padding-top:20px; border-top:1px solid var(--line); color:var(--dim); font-size:12.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="badge">DESIGN REVIEW</div>
+  <div class="wrap">
+    <h1>开放世界原型 <span style="color:var(--dim);font-size:18px;font-weight:400">GTA-like Browser Game</span></h1>
+    <div class="sub">游戏设计评审报告 · 架构 / 模块 / 玩法 / 优化与扩展路线</div>
+    <div class="meta">评审对象：<code>D:\AI\claude\game\gta5</code> @ master · 技术栈 Three.js r185 + Rapier 0.19 + TypeScript + Vite · 评审日期 2026-08-30</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <a href="#summary">① 评审摘要</a>
+  <a href="#arch">② 架构图</a>
+  <a href="#modules">③ 模块组成</a>
+  <a href="#loop">④ 帧循环与解耦</a>
+  <a href="#play">⑤ 玩法解构</a>
+  <a href="#review">⑥ 设计评估</a>
+  <a href="#opt">⑦ 优化建议</a>
+  <a href="#new">⑧ 新玩法提案</a>
+  <a href="#roadmap">⑨ 路线图</a>
+</nav>
+
+<!-- ============ 1 摘要 ============ -->
+<h2 id="summary">① 评审摘要<span class="en">EXECUTIVE SUMMARY</span></h2>
+<p class="lead">一句话结论：这是一个<strong>工程完成度远高于内容完成度</strong>的原型——系统骨架、物理手感、AI 与表现层已达到"可玩的小型沙盒"水准，短板集中在<strong>内容密度与长期动机</strong>。</p>
+
+<div class="grid g4" style="margin:14px 0 18px">
+  <div class="stat"><div class="num">33</div><div class="lab">TypeScript 模块</div></div>
+  <div class="stat"><div class="num">8,863</div><div class="lab">源码行数（src/）</div></div>
+  <div class="stat"><div class="num">5</div><div class="lab">架构分层</div></div>
+  <div class="stat"><div class="num">~15 min</div><div class="lab">主线通关时长（估）</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <h3 style="margin-top:0">分项评分</h3>
+    <div class="score-row"><span class="name">世界构建 / 城市生成</span><span class="bar"><i style="width:90%;background:var(--green)"></i></span><span class="val">4.5</span></div>
+    <div class="score-row"><span class="name">载具手感 / 物理</span><span class="bar"><i style="width:90%;background:var(--green)"></i></span><span class="val">4.5</span></div>
+    <div class="score-row"><span class="name">工程质量 / 可维护性</span><span class="bar"><i style="width:90%;background:var(--green)"></i></span><span class="val">4.5</span></div>
+    <div class="score-row"><span class="name">视听表现</span><span class="bar"><i style="width:80%;background:var(--blue)"></i></span><span class="val">4.0</span></div>
+    <div class="score-row"><span class="name">通缉 / 警察 AI</span><span class="bar"><i style="width:80%;background:var(--blue)"></i></span><span class="val">4.0</span></div>
+    <div class="score-row"><span class="name">叙事 / 主线</span><span class="bar"><i style="width:60%;background:var(--gold)"></i></span><span class="val">3.0</span></div>
+    <div class="score-row"><span class="name">步行战斗</span><span class="bar"><i style="width:56%;background:var(--gold)"></i></span><span class="val">2.8</span></div>
+    <div class="score-row"><span class="name">经济系统</span><span class="bar"><i style="width:50%;background:var(--orange)"></i></span><span class="val">2.5</span></div>
+    <div class="score-row"><span class="name">长期留存 / 目标感</span><span class="bar"><i style="width:36%;background:var(--red)"></i></span><span class="val">1.8</span></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">三条核心判断</h3>
+    <p><b style="color:var(--green)">① 骨架已成，可以直接往上堆内容。</b><br>
+      <span style="color:#c9d4e0">回调解耦 + 对象池 + 固定步长插值三条约定贯彻得很干净，新增一个玩法系统的边际成本极低——这是原型阶段最值钱的资产。</span></p>
+    <p style="margin-top:12px"><b style="color:var(--gold)">② 玩法循环缺"上升螺旋"。</b><br>
+      <span style="color:#c9d4e0">主线六步后进入自由模式，此时玩家只剩"开出租赚钱"和"撞人捡钱"两个平循环，钱没有值得追求的出口，动机在 20 分钟内归零。</span></p>
+    <p style="margin-top:12px"><b style="color:var(--red)">③ 风险最高的不是性能，是"城市不像活的"。</b><br>
+      <span style="color:#c9d4e0">26 个行人 + 6 辆车 + 装饰性红绿灯，街道空旷且无秩序感。密度与规则是开放世界可信度的地基。</span></p>
+  </div>
+</div>
+
+<!-- ============ 2 架构 ============ -->
+<h2 id="arch">② 游戏架构图<span class="en">ARCHITECTURE</span></h2>
+<p class="lead">五层单向依赖：下层不知道上层存在，跨层通信一律走「公开回调字段 + main.ts 接线」。</p>
+
+<div class="layer L-ui">
+  <div class="title">UI 层 · 表现输出（只读游戏状态，不改状态）</div>
+  <div class="mods">
+    <div class="mod">HUD<small>星级/HP/$/车况/导航/性能</small></div>
+    <div class="mod">Minimap<small>canvas 小地图</small></div>
+    <div class="mod">Help<small>H 键指南浮层</small></div>
+    <div class="mod">HealthBar3D<small>世界空间血条</small></div>
+    <div class="mod">Beacon<small>共享目标光柱</small></div>
+  </div>
+</div>
+<div class="arrow">▲ 读状态</div>
+
+<div class="layer L-play">
+  <div class="title">GAMEPLAY 层 · 规则与状态机（操作实体，彼此用回调解耦）</div>
+  <div class="mods">
+    <div class="mod">Wanted<small>909 行 · 通缉最大状态机</small></div>
+    <div class="mod">Weapons<small>358 行 · 枪械/手雷/爆炸</small></div>
+    <div class="mod">Story<small>310 行 · 主线六步</small></div>
+    <div class="mod">PlayerManager<small>步行⇄驾驶/抢车</small></div>
+    <div class="mod">CharacterController<small>走跑跳游/楼梯</small></div>
+    <div class="mod">Health<small>HP/死亡/复活/金钱</small></div>
+    <div class="mod">TaxiJobs<small>经济收入</small></div>
+    <div class="mod">Shops<small>经济支出</small></div>
+    <div class="mod">Pickups<small>掉落现金池</small></div>
+    <div class="mod">fx<small>共享曳光</small></div>
+  </div>
+</div>
+<div class="arrow">▲ 驱动</div>
+
+<div class="layer L-ent">
+  <div class="title">ENTITIES 层 · 有位姿的物体（物理 + 视觉 + 渲染插值）</div>
+  <div class="mods">
+    <div class="mod">Vehicle<small>777 行 · 一套物理四种载具</small></div>
+    <div class="mod">Character<small>KCC 胶囊 + 骨骼 + 手臂 IK</small></div>
+    <div class="mod">Pedestrians<small>481 行 · 26 人对象池</small></div>
+    <div class="mod">Traffic<small>6 车路网巡航池</small></div>
+    <div class="mod">CameraRig<small>第三人称 + 追尾模式</small></div>
+    <div class="mod">BoatMesh<small>程序化快艇</small></div>
+  </div>
+</div>
+<div class="arrow">▲ 站在世界上</div>
+
+<div class="layer L-world">
+  <div class="title">WORLD 层 · 世界生成与环境</div>
+  <div class="mods">
+    <div class="mod">City<small>667 行 · 程序化街区/路网/楼梯/分区</small></div>
+    <div class="mod">ChunkManager<small>780 行 · 5×5 流式加载 + 几何合并</small></div>
+    <div class="mod">Scene<small>昼夜光照/天空/太阳</small></div>
+    <div class="mod">Weather<small>雨 + 湿度</small></div>
+    <div class="mod">Doors<small>商店门动画</small></div>
+  </div>
+</div>
+<div class="arrow">▲ 基于</div>
+
+<div class="layer L-core">
+  <div class="title">CORE 层 · 引擎无关基础设施</div>
+  <div class="mods">
+    <div class="mod">Engine<small>渲染/后期/固定步长循环/自适应像素比</small></div>
+    <div class="mod">Physics<small>Rapier 封装 + 零分配工具</small></div>
+    <div class="mod">Input<small>键鼠 + 指针锁定 + 调试注入</small></div>
+    <div class="mod">Audio<small>512 行 · 采样+程序化混合</small></div>
+    <div class="mod">Loader<small>GLB/OBJ 模型库 + 模板 clone</small></div>
+    <div class="mod">CharacterAnim<small>骨骼剪辑共用</small></div>
+    <div class="mod">MathUtil</div>
+  </div>
+</div>
+
+<div class="callout blue" style="margin-top:18px">
+  <b>组装层 <code>main.ts</code>（592 行）</b>——全项目唯一允许"知道所有系统"的文件：构建实例、接线跨系统回调、编排主循环、驱动 HUD/小地图。读它一遍即可掌握全部系统交互，这是本项目架构上最正确的一个决定。
+</div>
+
+<!-- ============ 3 模块 ============ -->
+<h2 id="modules">③ 各模块组成<span class="en">MODULE BREAKDOWN</span></h2>
+
+<h3>CORE — 基础设施（7 模块 / 1,484 行）</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:130px">模块</th><th style="width:60px">行数</th><th>职责与关键设计</th></tr></thead>
+  <tbody>
+    <tr><td><code>Engine.ts</code></td><td>158</td><td>渲染器 + bloom 后期 + <b>固定步长循环</b>（<code>FIXED_DT=1/60</code>，单帧最多补 5 步防螺旋）；帧统计窗口 60 帧，均帧 &gt;22ms 自动降像素比至 0.75</td></tr>
+    <tr><td><code>Physics.ts</code></td><td>67</td><td>Rapier world 封装；<code>setVel</code>/<code>radialBlastImpulse</code> 复用参数对象，运行期零分配</td></tr>
+    <tr><td><code>Audio.ts</code></td><td>512</td><td>WebAudio 全链路：引擎随速变调、风雨、枪炮、警笛、胎鸣、喇叭、脚步——采样与程序化合成混合</td></tr>
+    <tr><td><code>Loader.ts</code></td><td>485</td><td>模型库：8 车型 / 5 人物（含骨骼动画）/ 19 建筑 + 道具 / 坦克 / 摩托；模板化 clone 供对象池复用</td></tr>
+    <tr><td><code>Input.ts</code></td><td>180</td><td>键鼠状态机（<code>isDown</code>/<code>wasPressed</code>）+ 指针锁定 + 全屏键盘锁；<code>debugHold</code> 支持自动化测试注入</td></tr>
+    <tr><td><code>CharacterAnim.ts</code></td><td>68</td><td>骨骼角色共用：剪辑切换与插值位姿写回根节点</td></tr>
+    <tr><td><code>MathUtil.ts</code></td><td>4</td><td><code>wrapAngle</code> 等共用数学</td></tr>
+  </tbody>
+</table></div>
+
+<h3>WORLD — 世界生成（5 模块 / 1,750 行）</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:130px">模块</th><th style="width:60px">行数</th><th>职责与关键设计</th></tr></thead>
+  <tbody>
+    <tr><td><code>City.ts</code></td><td>667</td><td>程序化城市数据：街区 24m + 路宽 8m（间距 32m）、每 chunk 3×3 街区 = 96m；分区沿 x 轴 <b>城市 → 沙滩（1 列）→ 海洋</b>；生成楼宇/红绿灯/路灯/商店门/停放车/<b>三层可进塔楼 + 之字形楼梯高度场</b>；导出路网寻路 API（<code>snapToRoad</code>/<code>advanceOnRoad</code>）给 Traffic 与 Wanted 共用</td></tr>
+    <tr><td><code>ChunkManager.ts</code></td><td>780</td><td>5×5 chunk 流式加载（240m 见方），卸载半径 3 做滞回防抖；<b>几何合并</b>降 draw call；碰撞体增删限速 <code>20 ops/frame</code> 防跨界顿挫；水面顶点波浪 + 岸边浪花带；昼夜/雨湿材质联动</td></tr>
+    <tr><td><code>Scene.ts</code></td><td>118</td><td>昼夜循环：太阳轨迹、天空色、雾、夜间因子（驱动车灯/辉光/路灯）</td></tr>
+    <tr><td><code>Weather.ts</code></td><td>90</td><td>1400 粒子雨（跟随相机 46m 见方）+ 湿度值，湿度驱动路面反光、辉光加成与音频</td></tr>
+    <tr><td><code>Doors.ts</code></td><td>95</td><td>商店门开合动画（玩家靠近触发）</td></tr>
+  </tbody>
+</table></div>
+
+<h3>ENTITIES — 实体（6 模块 / 1,943 行）</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:130px">模块</th><th style="width:60px">行数</th><th>职责与关键设计</th></tr></thead>
+  <tbody>
+    <tr><td><code>Vehicle.ts</code></td><td>777</td><td><b>一套物理四种载具</b>（CAR / MOTO / BOAT / TANK_SPEC）：Rapier 四轮悬挂（刚度 28、压缩 4.5、回弹 6.5，经无头测试标定）、质心下移抗侧倾、侧向摩擦 0.85 保证"先侧滑不掀翻"、手刹后轮抱死漂移；深水浮力弹簧 + 划水推进防沉底；车况三段（冒烟 &lt;50% / 起火 &lt;25% / 归零殉爆）</td></tr>
+    <tr><td><code>Character.ts</code></td><td>292</td><td>KCC 胶囊 + 骨骼动画 + <b>双手 IK</b>（骑摩托握把，把端坐标实测自 bike.obj 顶点）</td></tr>
+    <tr><td><code>Pedestrians.ts</code></td><td>481</td><td>26 人固定池；三态 <code>walk / flee / down</code>；人行道拐角巡走、听枪声与近车逃散（阈值 18m + 车速 &gt;8m/s）、被撞翻滚掉血掉钱、130m 外回收重生</td></tr>
+    <tr><td><code>Traffic.ts</code></td><td>291</td><td>6 车固定池；路网巡航 8m/s、路口 35% 转向、前车 7m 刹停；<code>markCourier</code> 供剧情标记跑腿车</td></tr>
+    <tr><td><code>CameraRig.ts</code></td><td>162</td><td>第三人称球形探测避障（半径 0.25）；驾驶追尾模式：yaw 跟车头、随车速拉远（最多 +2.5m）、鼠标环视自动回中</td></tr>
+    <tr><td><code>BoatMesh.ts</code></td><td>60</td><td>程序化快艇造型（无外部模型依赖）</td></tr>
+  </tbody>
+</table></div>
+
+<h3>GAMEPLAY — 玩法规则（10 模块 / 2,502 行）</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:150px">模块</th><th style="width:60px">行数</th><th>职责与关键数值</th></tr></thead>
+  <tbody>
+    <tr><td><code>Wanted.ts</code></td><td>909</td><td>热度→星级（上限 3★）；各星级警车数 <code>[0,2,3,4]</code>，车池 4 / 警池 8；警车视距 50m、步警 35m，射线视线检测降频至 0.4s；脱视线 6s 后热度按 0.22/s 衰减；2★ 起警察下车围捕（14m 下车 / 40m 收兵）；警察跑速 5.2 &lt; 玩家疾跑 9（留出"跑得掉"的余地）；警察不下海</td></tr>
+    <tr><td><code>Weapons.ts</code></td><td>358</td><td>手枪 / 机枪（0.1s 间隔、扩散 0.035）/ 手雷（2.5s 引信、爆炸半径 8m、惊散半径 30m）；射程 80m；<code>explodeAt</code> 供车辆殉爆复用</td></tr>
+    <tr><td><code>Story.ts</code></td><td>310</td><td>主线六步状态机 + 字幕框 + 金色光柱；自有载具开场 <code>stash</code>（同时规避远处载具坠空问题）</td></tr>
+    <tr><td><code>PlayerManager.ts</code></td><td>189</td><td>步行⇄驾驶切换、抢车（<b>载具即插槽</b>：不生成新车，主车瞬移换装 <code>teleportTo</code>+<code>setCarType</code>，O(1) 所有权）、摩托甩人</td></tr>
+    <tr><td><code>CharacterController.ts</code></td><td>174</td><td>走 5 / 跑 9 / 跳 8 / 游 2.6（快游 4.2）；重力 −20（强于真实值，手感更利落）；楼梯高度场接管、击退、硬着陆判定</td></tr>
+    <tr><td><code>Health.ts</code></td><td>100</td><td>HP 100，停火 6s 后 5/s 回血；死亡黑幕 2.4s → 医院复活扣 $100、清通缉、3s 无敌；初始金钱 $800</td></tr>
+    <tr><td><code>TaxiJobs.ts</code></td><td>173</td><td>接客 60–140m、送达 120–260m，按里程计价，停稳（&lt;2km/h）判定</td></tr>
+    <tr><td><code>Shops.ts</code></td><td>156</td><td>武器店（手枪弹 $100 / 机枪弹 $150 / 手雷 $120）、喷漆店（洗通缉 $200 / 修车 $150）</td></tr>
+    <tr><td><code>Pickups.ts</code></td><td>81</td><td>24 个现金块池，25s 生命，1.5m 自动拾取</td></tr>
+    <tr><td><code>fx.ts</code></td><td>15</td><td>曳光弹共享特效（Weapons / Wanted 共用）</td></tr>
+  </tbody>
+</table></div>
+
+<h3>UI — 表现层（5 模块 / 519 行）</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:130px">模块</th><th style="width:60px">行数</th><th>职责</th></tr></thead>
+  <tbody>
+    <tr><td><code>HUD.ts</code></td><td>228</td><td>星级 / HP / 现金 / 车况 / 方向导航 / 情境提示 / 性能面板（均帧、峰值帧、物理耗时、draw call、像素比）</td></tr>
+    <tr><td><code>Minimap.ts</code></td><td>113</td><td>canvas 小地图：白=AI 车 橙=行人 红=警察 金/绿=任务 蓝/橙=商店</td></tr>
+    <tr><td><code>Help.ts</code></td><td>64</td><td>H 键操作速查浮层</td></tr>
+    <tr><td><code>HealthBar3D.ts</code></td><td>57</td><td>行人/警察头顶世界空间血条</td></tr>
+    <tr><td><code>Beacon.ts</code></td><td>57</td><td>目标光柱组件（Story / TaxiJobs / Shops 三方共用）</td></tr>
+  </tbody>
+</table></div>
+
+<!-- ============ 4 帧循环 ============ -->
+<h2 id="loop">④ 帧循环与解耦约定<span class="en">GAME LOOP &amp; DECOUPLING</span></h2>
+
+<div class="grid g2">
+  <div class="card">
+    <h3 style="margin-top:0">帧循环时序</h3>
+    <div class="seq">
+<span class="k">fixedUpdate(dt=1/60)</span> <span class="c">// 固定步长，最多补 5 步</span><br>
+&nbsp;├ 角色陷地/坠落兜底（按分区判高度）<br>
+&nbsp;├ <span class="g">beginStep</span> ×（角色 / 4 自有载具）<span class="c"> ← 记录插值起点</span><br>
+&nbsp;├ 行人 · 交通 · 通缉 AI 决策 → 写物理输入<br>
+&nbsp;├ playerManager.fixedUpdate（驾驶输入 / 撞击伤害）<br>
+&nbsp;├ <span class="k">physics.step()</span> <span class="c">← 计时进 HUD physMs</span><br>
+&nbsp;└ <span class="g">endStep</span> ×（全体）<span class="c"> ← 采样物理结果为插值终点</span><br><br>
+<span class="k">update(dt, alpha)</span> <span class="c">// 每帧，alpha = 两步之间插值系数</span><br>
+&nbsp;├ 上下车音效沿边触发<br>
+&nbsp;├ <span class="g">syncVisual(alpha)</span> ×（全体）<span class="c"> ← 高刷屏防抖关键</span><br>
+&nbsp;├ 骑手贴装 + 双手 IK 握把<br>
+&nbsp;├ Story / Weapons / Shops / TaxiJobs / Pickups 轮询<br>
+&nbsp;├ 天气 → 湿度 → 路面材质 / 音频 / 辉光<br>
+&nbsp;├ 昼夜 → 车灯 / 路灯 / bloom（0.05 + 夜×0.24 + 夜雨×0.12）<br>
+&nbsp;├ chunkManager.update（流式加载 / 门 / 水波 / 信号灯）<br>
+&nbsp;├ 音频总线（引擎 / 警笛 / 喇叭 / 胎啸 / 脚步）<br>
+&nbsp;└ HUD + 小地图重绘 + input.endFrame
+    </div>
+    <div class="callout blue" style="margin-bottom:0">任何 60Hz 直读位姿在 144Hz 屏上都会抖——<code>syncVisual(alpha)</code> 的存在是这个项目画面稳定的根因。</div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">跨系统事件接线（全部在 main.ts）</h3>
+    <div class="tablewrap"><table style="margin-top:4px">
+      <thead><tr><th>事件源</th><th>回调</th><th>去向</th></tr></thead>
+      <tbody>
+        <tr><td>Weapons</td><td><code>onCrime</code></td><td>Wanted 升星 + 自有载具殉爆波及</td></tr>
+        <tr><td>Weapons</td><td><code>onHitBody</code></td><td>行人扣血 → 未命中则查警察</td></tr>
+        <tr><td>Weapons</td><td><code>onPlayerBlast</code></td><td>Health 扣血 + 角色击退</td></tr>
+        <tr><td>Pedestrians</td><td><code>onHitByPlayerCar</code></td><td>Wanted 升星 + 撞击音效</td></tr>
+        <tr><td>Pedestrians</td><td><code>onDropMoney</code></td><td>Pickups 生成现金</td></tr>
+        <tr><td>Vehicle</td><td><code>onExploded</code></td><td>Weapons.explodeAt（与手雷同一套特效）</td></tr>
+        <tr><td>PlayerManager</td><td><code>onCarjack</code></td><td>Wanted 升星 + Story 推进</td></tr>
+        <tr><td>PlayerManager</td><td><code>onEjected</code></td><td>Health −25（摩托甩人）</td></tr>
+        <tr><td>Wanted</td><td><code>onPlayerHit</code></td><td>驾车时车身挡半伤、车况扣 6</td></tr>
+        <tr><td>Controller</td><td><code>onHardLanding</code></td><td>Health 坠落伤 + 落地音</td></tr>
+        <tr><td>Health</td><td><code>onRespawn</code></td><td>强制下车 + 瞬移 + 清通缉</td></tr>
+      </tbody>
+    </table></div>
+    <p style="font-size:13px;color:var(--dim);margin-top:10px">11 条回调构成全部系统耦合面——这是一张可以直接当作"游戏事件总线设计"的表。想加新玩法，先在这张表上加一行。</p>
+  </div>
+</div>
+
+<!-- ============ 5 玩法 ============ -->
+<h2 id="play">⑤ 玩法解构<span class="en">GAMEPLAY ANATOMY</span></h2>
+
+<h3>核心循环</h3>
+<div class="flow">
+  <div class="node gold"><b>作案</b><small>抢车 · 开枪 · 撞人 · 爆炸 · 袭警</small></div>
+  <div class="arrow">↓ 犯罪上报 heat +</div>
+  <div class="node red"><b>通缉升级 1★→3★</b><small>警车追击 → 警察下车围捕 → 更多警力/更准枪法</small></div>
+  <div class="arrow">↓ 三条出口</div>
+  <div class="node" style="max-width:700px"><b>断视线（免费）&nbsp;·&nbsp;下海（免费）&nbsp;·&nbsp;喷漆店（$200）</b><small>建筑真实遮挡射线 · 警察不下水 · Pay'n'Spray 立即清零</small></div>
+  <div class="arrow">↓ 脱身 / 或被打倒</div>
+  <div class="node green"><b>收益结算</b><small>掉落现金 · 出租车费 · 或医院复活 −$100</small></div>
+  <div class="arrow">↓ 补给</div>
+  <div class="node"><b>消费</b><small>弹药 · 修车 · 洗通缉</small></div>
+  <div class="arrow">↺ 回到作案</div>
+</div>
+
+<div class="callout red" style="margin-top:18px">
+  <b>循环诊断：</b>这是一个<strong>闭合但不上升</strong>的循环。收益只用于维持下一次循环的成本，玩家在第 3 圈之后不会变强、不解锁任何东西、也没有新目标——这是长期留存评分只有 1.8 的直接原因。
+</div>
+
+<h3>主线六步状态机（Story.ts）</h3>
+<div class="grid g3" style="margin-top:10px">
+  <div class="card"><b style="color:var(--gold)">① steal</b><br><span style="font-size:13.5px;color:#c9d4e0">光柱指向最近 AI 车，按 E 抢走。<br><span style="color:var(--dim)">教学：抢车 = 犯罪</span></span></div>
+  <div class="card"><b style="color:var(--gold)">② evade</b><br><span style="font-size:13.5px;color:#c9d4e0">星级归零才推进。<br><span style="color:var(--dim)">教学：断视线机制</span></span></div>
+  <div class="card"><b style="color:var(--gold)">③ meet</b><br><span style="font-size:13.5px;color:#c9d4e0">到修车行找老周（85.5, −53.5）。<br><span style="color:var(--dim)">教学：光柱 + 导航</span></span></div>
+  <div class="card"><b style="color:var(--gold)">④ chase</b><br><span style="font-size:13.5px;color:#c9d4e0">逼停帮派面包车（近 7m 且速度 &lt;0.8，或直接抢它）。<br><span style="color:var(--dim)">教学：车辆对抗</span></span></div>
+  <div class="card"><b style="color:var(--gold)">⑤ reclaim</b><br><span style="font-size:13.5px;color:#c9d4e0">码头场子（−172, 108）下车查看 → 爱车就位 → 开走即被栽赃 2★。<br><span style="color:var(--dim)">戏剧性回调</span></span></div>
+  <div class="card"><b style="color:var(--green)">⑥ moto → done</b><br><span style="font-size:13.5px;color:#c9d4e0">海滩销赃点（−262, 16）骑回摩托，进入自由模式。<br><span style="color:var(--dim)">目标清空，字幕关闭</span></span></div>
+</div>
+<p style="font-size:13.5px;color:var(--dim);margin-top:10px">设计评价：六步<b>每一步都在教一个机制</b>，教学编排是合格的商业级思路；但 <code>done</code> 之后系统直接把目标置空，玩家被"扔"进空城——这是叙事结构上最刺眼的断点。</p>
+
+<h3>经济账本</h3>
+<div class="grid g2">
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--green)">收入端</h4>
+    <div class="tablewrap"><table style="margin-top:6px">
+      <thead><tr><th>来源</th><th>额度</th><th>成本 / 风险</th></tr></thead>
+      <tbody>
+        <tr><td>出租车载客</td><td>按里程（120–260m/单）</td><td>零风险，慢</td></tr>
+        <tr><td>撞倒行人掉钱</td><td>$10–40 / 人</td><td>必引通缉</td></tr>
+        <tr><td>初始资金</td><td>$800</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h4 style="margin-top:0;color:var(--red)">支出端</h4>
+    <div class="tablewrap"><table style="margin-top:6px">
+      <thead><tr><th>项目</th><th>价格</th><th>性质</th></tr></thead>
+      <tbody>
+        <tr><td>手枪弹 +24 / 机枪弹 +120 / 手雷 +3</td><td>$100 / $150 / $120</td><td>消耗</td></tr>
+        <tr><td>喷漆洗通缉</td><td>$200</td><td>消耗</td></tr>
+        <tr><td>修车</td><td>$150</td><td>消耗</td></tr>
+        <tr><td>医院复活</td><td>$100</td><td>惩罚</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</div>
+<div class="callout"><b>经济诊断：</b>四项支出<strong>全部是消耗品，没有任何一项是资产或永久解锁</strong>。玩家攒到 $5,000 与 $500 的体验完全相同，金钱失去意义，进而导致所有赚钱玩法（出租车、抢劫）失去意义。这是最优先要修的设计漏洞。</div>
+
+<!-- ============ 6 评估 ============ -->
+<h2 id="review">⑥ 设计评估<span class="en">CRITIQUE</span></h2>
+
+<div class="grid g2">
+  <div class="card">
+    <h3 style="margin-top:0;color:var(--green)">做得好的地方</h3>
+    <ul class="good">
+      <li><b>固定步长 + 视觉插值</b>贯彻到每个实体，高刷屏无抖动——很多同类原型栽在这。</li>
+      <li><b>回调解耦 + main 单点接线</b>：11 条回调是全部耦合面，新系统接入成本极低。</li>
+      <li><b>全对象池</b>（行人/车/警力/曳光/现金/烟火），连 <code>setLinvel</code> 参数对象都复用，无 GC 掉帧。</li>
+      <li><b>"载具即插槽"</b>：抢车 = 主车瞬移换装，O(1) 所有权，省掉一整套载具管理复杂度。</li>
+      <li><b>通缉的三条出口有明确成本梯度</b>（断视线免费但难 / 下海免费但离场 / 喷漆 $200 但即时），是教科书式的玩家选择设计。</li>
+      <li><b>警察跑速 5.2 &lt; 玩家 9</b> 的刻意留白，让"逃"永远是可行的——正确的挫败感控制。</li>
+      <li><b>物理参数有实测依据</b>（悬挂阻尼比、摩托把端坐标取自顶点实测），不是拍脑袋调的。</li>
+      <li><b>碰撞体增删限速 20 ops/frame</b>：把流式加载的顿挫摊平，是真正踩过坑才会写的代码。</li>
+      <li><b>?autotest 帧驱动冒烟测试</b>：用帧计数而非定时器，规避后台标签页 rAF 暂停误判。</li>
+      <li>素材许可清晰（ASSETS.md 全部 CC0/CC-BY 并登记署名），没有法务雷。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;color:var(--red)">问题清单（按严重度）</h3>
+    <ul class="bad">
+      <li><span class="tag t-p0">严重</span> <b>长期动机断崖</b>：<code>Story.ts</code> 进入 <code>done</code> 后无任何目标产出，剩余循环全是平的。</li>
+      <li><span class="tag t-p0">严重</span> <b>金钱无出口</b>：支出全为消耗品，无购车/房产/升级，攒钱无意义（见上表）。</li>
+      <li><span class="tag t-p0">严重</span> <b>无存档</b>：全项目零 <code>localStorage</code>，刷新即丢金钱/弹药/剧情进度。</li>
+      <li><span class="tag t-p1">高</span> <b>城市密度不足</b>：<code>Pedestrians COUNT=26</code>、<code>Traffic CAR_COUNT=6</code>，街道空旷，"活的城市"感缺失。</li>
+      <li><span class="tag t-p1">高</span> <b>红绿灯是纯装饰</b>：<code>updateCitySignals</code> 全城同步变色，AI 车不停、玩家闯红灯无后果，秩序感为零。</li>
+      <li><span class="tag t-p1">高</span> <b>死亡惩罚过轻反成捷径</b>：$100 换"清空通缉 + 满血"，3★ 时故意送死比逃跑更划算，破坏通缉张力。</li>
+      <li><span class="tag t-p1">高</span> <b>步行战斗单薄</b>：无瞄准态/掩体/近战/锁定，手枪与机枪差异仅在射速，敌人只有警察一种。</li>
+      <li><span class="tag t-p1">高</span> <b>通缉上限 3★ 且警力只有两种单位</b>：无路障、无直升机、无警犬，3★ 后压力不再上升。</li>
+      <li><span class="tag t-p2">中</span> <b>行人只有 3 态</b>（walk/flee/down），无坐/交谈/进出店，人群像跑步机上的模型。</li>
+      <li><span class="tag t-p2">中</span> <b>流式半径 240m 的连锁副作用</b>：远处载具会踩空，只能靠 <code>setStashed</code> 规避，限制了"把车停在远处"这类基本自由。</li>
+      <li><span class="tag t-p2">中</span> <b>导航只有 HUD 箭头 + 小地图</b>，无全屏地图与自定义航点，玩家无法规划路线。</li>
+      <li><span class="tag t-p2">中</span> <b>输入仅键鼠</b>：无手柄、无触屏，浏览器游戏放弃了一半潜在设备。</li>
+      <li><span class="tag t-p2">中</span> <b>音乐无动态层次</b>：通缉升级不改配乐，最容易做的情绪杠杆没用上。</li>
+      <li><span class="tag t-p2">中</span> <b>抢来的车无法保留</b>：插槽模型的代价——玩家收集欲无处安放。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ 7 优化 ============ -->
+<h2 id="opt">⑦ 优化建议<span class="en">OPTIMIZATION</span></h2>
+<p class="lead">工作量标注：<span class="tag t-s">S ≤半天</span> <span class="tag t-m">M 1–3 天</span> <span class="tag t-l">L 1 周+</span></p>
+
+<h3>性能 — 目标：把行人密度从 26 提到 80+ 而不掉帧</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:170px">优化项</th><th style="width:80px">工作量</th><th>做法与落点</th></tr></thead>
+  <tbody>
+    <tr><td>行人渲染降本</td><td><span class="tag t-m">M</span></td><td>骨骼蒙皮是当前人口上限的瓶颈（代码注释已自陈）。20m 内保留 SkinnedMesh，20–60m 切"顶点动画烘焙 + InstancedMesh"，60m 外切 billboard impostor。落点 <code>Pedestrians.ts</code> + <code>CharacterAnim.ts</code></td></tr>
+    <tr><td>建筑 chunk LOD</td><td><span class="tag t-m">M</span></td><td>已有几何合并，再加 2 级 LOD：外圈 chunk 只留合并后的 box 剪影、去掉门/招牌/路灯细节。落点 <code>ChunkManager.ts</code></td></tr>
+    <tr><td>碰撞体近场化</td><td><span class="tag t-s">S</span></td><td>视觉加载半径 2、<b>碰撞体只建半径 1</b>（远处玩家碰不到），静态碰撞体数量可降约 2/3。落点 <code>ChunkManager.ts</code></td></tr>
+    <tr><td>资源体积</td><td><span class="tag t-m">M</span></td><td>GLB 走 Draco/meshopt，贴图转 KTX2（BasisU）——首屏体积与显存双降，浏览器游戏的首屏时间是留存第一关。落点 <code>Loader.ts</code> + 构建脚本</td></tr>
+    <tr><td>后期与阴影</td><td><span class="tag t-s">S</span></td><td>bloom 走半分辨率 RT；阴影贴图按夜间因子动态调分辨率（白天可降）。落点 <code>Engine.ts</code> / <code>Scene.ts</code></td></tr>
+    <tr><td>自适应画质分档</td><td><span class="tag t-s">S</span></td><td>现有机制只降像素比（下限 0.75）。扩成三档：先降雨粒子/行人数 → 再降阴影 → 最后降像素比。落点 <code>Engine.ts</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>手感与反馈 — 目标：每一次碰撞/开枪/升星都有"分量"</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:170px">优化项</th><th style="width:80px">工作量</th><th>做法与落点</th></tr></thead>
+  <tbody>
+    <tr><td>撞击冲击感</td><td><span class="tag t-s">S</span></td><td>已有 <code>impactDv</code> 判定，只差表现：Δv 越大 → 镜头震动 + 2–4 帧顿帧 + 全屏轻微色差。落点 <code>CameraRig.ts</code> + <code>main.ts</code></td></tr>
+    <tr><td>瞄准态</td><td><span class="tag t-s">S</span></td><td>右键进入过肩瞄准：FOV 收窄、相机右移、移速降至 3、准星收敛；配一个约 8° 的软吸附。落点 <code>Weapons.ts</code> + <code>CameraRig.ts</code></td></tr>
+    <tr><td>武器差异化</td><td><span class="tag t-s">S</span></td><td>当前手枪/机枪只差射速。补：后坐力曲线、弹匣与换弹动作、爆头倍率、机枪移动精度惩罚。落点 <code>Weapons.ts</code></td></tr>
+    <tr><td>车型性能分级</td><td><span class="tag t-m">M</span></td><td>8 个车型共用一套参数。按 <code>CarType</code> 给出 4 档（跑车/家用/SUV/货车）的动力-抓地-质量三元组，抢车才有意义。落点 <code>Vehicle.ts</code> + <code>Loader.ts</code></td></tr>
+    <tr><td>动态配乐</td><td><span class="tag t-s">S</span></td><td>0★ / 追逐 / 围捕三层音轨交叉淡入，跟 <code>wanted.sirenLevel</code> 走。落点 <code>Audio.ts</code></td></tr>
+    <tr><td>死亡惩罚重构</td><td><span class="tag t-s">S</span></td><td>改为"扣 30% 现金 + 丢失当前武器 + 通缉降 1★ 而非清零"，堵住"送死洗通缉"捷径。落点 <code>Health.ts</code> + <code>main.ts</code> 接线</td></tr>
+    <tr><td>通缉搜索可视化</td><td><span class="tag t-s">S</span></td><td>小地图画出警方最后已知位置的搜索圈，圈内=危险、跑出圈=开始衰减，把不可见的 <code>EVADE_GRACE</code> 变成可读信息。落点 <code>Minimap.ts</code> + <code>Wanted.ts</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>世界可信度 — 目标：城市看起来在自己运转</h3>
+<div class="tablewrap"><table>
+  <thead><tr><th style="width:170px">优化项</th><th style="width:80px">工作量</th><th>做法与落点</th></tr></thead>
+  <tbody>
+    <tr><td>红绿灯生效</td><td><span class="tag t-s">S</span></td><td>信号相位已是全城同步的时间函数，AI 车过路口前查相位决定刹停；玩家闯红灯 → 新增 <code>runlight</code> 犯罪（仅在警察视线内计热度）。落点 <code>Traffic.ts</code> + <code>Wanted.ts</code></td></tr>
+    <tr><td>行人行为扩展</td><td><span class="tag t-m">M</span></td><td>加 <code>idle / chat / queue / enter-shop</code> 四态，并按时间段调整密度（早晚高峰、深夜稀疏）。落点 <code>Pedestrians.ts</code></td></tr>
+    <tr><td>密度随距离分级</td><td><span class="tag t-s">S</span></td><td>把行人/车池扩大，但按"近场高密度、远场稀疏"分配，配合上面的 LOD 就能在同等开销下让街道显著变热闹。落点 <code>Pedestrians.ts</code> / <code>Traffic.ts</code></td></tr>
+    <tr><td>停放车可交互</td><td><span class="tag t-s">S</span></td><td><code>ParkedCarSpec</code> 已生成路边停车，目前只是模型——接进抢车判定即可让"随处抢车"成立。落点 <code>ChunkManager.ts</code> + <code>PlayerManager.ts</code></td></tr>
+    <tr><td>地标与分区个性</td><td><span class="tag t-m">M</span></td><td>目前全城同质。给 3–4 个 chunk 打上"商业区/工业区/富人区"标签，改变楼高分布、配色、行人模型与车型概率。落点 <code>City.ts</code></td></tr>
+  </tbody>
+</table></div>
+
+<!-- ============ 8 新玩法 ============ -->
+<h2 id="new">⑧ 新玩法提案<span class="en">NEW FEATURES</span></h2>
+<p class="lead">按"投入产出比"排序。P0 三项合力可把游戏时长从 ~20 分钟拉到 2 小时以上。</p>
+
+<h3>P0 — 先修动机断崖（合计约 1 周）</h3>
+<div class="grid g2">
+  <div class="prop">
+    <div class="hd"><span class="tag t-p0">P0</span><h4>存档系统</h4><span class="tag t-s">S</span></div>
+    <div class="desc">localStorage 持久化：金钱、弹药、剧情状态、已解锁项、车库、统计数据。<b>这是所有长线玩法的前置条件</b>——没有存档，任何"养成"设计都无意义。菜单加"继续 / 新游戏"。</div>
+    <div class="foot">落点：新增 <code>core/SaveGame.ts</code>，在 <code>Health</code> / <code>Weapons</code> / <code>Story</code> 暴露 <code>serialize()</code>·<code>restore()</code>，<code>main.ts</code> 接线</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p0">P0</span><h4>车库与购车（金钱出口）</h4><span class="tag t-m">M</span></div>
+    <div class="desc">新增车行光柱：花钱解锁车型（跑车 $8k / SUV $5k / 摩托 $3k / 快艇 $15k），存进车库；任意车库点可召唤已拥有载具。抢来的车开进车库可"洗白入库"（收费）。<b>让抢车、出租、赏金全部有了终点。</b></div>
+    <div class="foot">落点：<code>gameplay/Garage.ts</code>（复用 <code>Shops</code> 的光柱 + 按键交互模板），配合 <code>Vehicle.setCarType</code> 与存档</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p0">P0</span><h4>支线任务生成器</h4><span class="tag t-m">M</span></div>
+    <div class="desc">把 <code>TaxiJobs</code> 泛化成 <code>JobSystem</code>，四类程序化任务共用"光柱 + 导航 + 计时 + 结算"：<br>
+      · <b>快递</b>：限时送包裹，超时罚款<br>
+      · <b>护送</b>：保护 NPC 车不被打爆<br>
+      · <b>追击</b>：追上并逼停标记车（复用 <code>markCourier</code>）<br>
+      · <b>逃脱</b>：接单即 2★，坚持 90 秒<br>
+      难度与报酬随完成次数上升，形成上升螺旋。</div>
+    <div class="foot">落点：<code>gameplay/JobSystem.ts</code>，抽取 <code>TaxiJobs</code> 的状态机骨架；<code>Beacon</code> / <code>HUD</code> 零改动即可复用</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p0">P0</span><h4>技能 / 声望成长</h4><span class="tag t-s">S</span></div>
+    <div class="desc">四条经验轴：驾驶（完成任务）、射击（命中）、耐力（跑动 / 游泳）、恶名（犯罪）。等级提升给可感知的小加成——最高血量、回血速度、载具抓地、通缉衰减速度。恶名等级则反向提高警方响应强度，形成风险-收益的自平衡。</div>
+    <div class="foot">落点：<code>gameplay/Progression.ts</code>，消费现有 11 条回调即可，无需改动实体层</div>
+  </div>
+</div>
+
+<h3>P1 — 加深核心体验（合计 2–3 周）</h3>
+<div class="grid g2">
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>帮派与地盘</h4><span class="tag t-l">L</span></div>
+    <div class="desc">码头帮已在主线登场却在通关后消失。给它 3 个据点：清剿据点 → 解锁该区域的车库折扣 / 任务点 / 藏身处；据点会周期性"反扑"。敌对 NPC 可<b>直接复用 <code>Wanted</code> 的步行警察 AI</b>（视线检测、下车围捕、血条都是现成的），换模型与阵营判定即可。</div>
+    <div class="foot">落点：<code>gameplay/Gangs.ts</code>，把 <code>Wanted</code> 的警察单元抽成通用 <code>ArmedUnit</code></div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>竞速赛事</h4><span class="tag t-m">M</span></div>
+    <div class="desc">路网是规则网格，天然适合程序化生成环线：随机取 6–10 个路口作 checkpoint，玩家下注、AI 车参赛、名次结算。夜间 / 雨天开专属高赔率场次，把已有的天气系统变成玩法变量。</div>
+    <div class="foot">落点：<code>gameplay/Races.ts</code>，复用 <code>City.snapToRoad</code> / <code>advanceOnRoad</code> 生成路线与 AI 对手</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>通缉 4★–5★ 与新警力</h4><span class="tag t-m">M</span></div>
+    <div class="desc">上限提到 5★，逐级引入：3★ 路障（路口生成静态警车墙）、4★ 警用直升机（探照灯破解"断视线"，逼玩家进室内或下海）、5★ 装甲车。每一级都必须<b>让原有的逃脱手段之一失效</b>，这样升星才是真正的压力升级。</div>
+    <div class="foot">落点：<code>Wanted.ts</code>（<code>COUNT_BY_STARS</code> 扩表 + 新单位类型），直升机需新增简易飞行体</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>抢劫玩法（室内利用）</h4><span class="tag t-m">M</span></div>
+    <div class="desc">City 已生成"三层可进塔楼 + 楼梯高度场"，这套昂贵的资产目前没有玩法承接。加入：便利店 / 银行抢劫——进店举枪 → 计时收银 → 警报触发 2★ → 带钱逃脱。天然复用现有全部系统。</div>
+    <div class="foot">落点：<code>gameplay/Robbery.ts</code> + <code>City.ts</code> 标记可抢劫室内点</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>全屏地图与航点</h4><span class="tag t-m">M</span></div>
+    <div class="desc">M 键打开全城地图：已探索区域、商店 / 车库 / 任务点图标、自定义航点（在小地图与 HUD 导航中生效）。开放世界没有地图，玩家就无法产生"计划"，而计划是沉浸感的来源。</div>
+    <div class="foot">落点：<code>ui/MapScreen.ts</code>，数据源与 <code>Minimap</code> 共用</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p1">P1</span><h4>手柄支持</h4><span class="tag t-s">S</span></div>
+    <div class="desc">Gamepad API 映射到现有 <code>Input</code> 抽象层（该层已有 <code>debugHold</code> 注入接口，扩展成本很低）。驾驶体验对扳机键的模拟量输入尤其敏感，收益立竿见影。</div>
+    <div class="foot">落点：<code>core/Input.ts</code> 内部扩展，上层零改动</div>
+  </div>
+</div>
+
+<h3>P2 — 长期方向</h3>
+<div class="grid g2">
+  <div class="prop">
+    <div class="hd"><span class="tag t-p2">P2</span><h4>多人联机（2–8 人自由城）</h4><span class="tag t-l">L</span></div>
+    <div class="desc">固定步长循环 + 实体 <code>beginStep</code>/<code>endStep</code> 的结构对状态同步很友好：位置走快照插值，载具走权威端 + 客户端预测。先做"共享城市 + 竞速 / 追捕小游戏"，不做全物理同步。</div>
+    <div class="foot">落点：新增 <code>net/</code> 层；<code>main.ts</code> 的接线表即是需要同步的事件清单</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p2">P2</span><h4>空中载具</h4><span class="tag t-l">L</span></div>
+    <div class="desc">直升机 / 小飞机。需要先解决流式加载半径（240m）——高空视野会直接暴露世界边界，需配套远景 impostor 城市剪影。</div>
+    <div class="foot">落点：<code>Vehicle.ts</code> 新增 HELI_SPEC + <code>ChunkManager</code> 远景层</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p2">P2</span><h4>房产与被动收入</h4><span class="tag t-l">L</span></div>
+    <div class="desc">购买安全屋（存档点 + 载具停放 + 换装）与生意（洗车行 / 夜店，按时产出被动收入，可被敌对帮派袭击）。这是把金钱转化为长期目标的终局设计。</div>
+    <div class="foot">落点：<code>gameplay/Property.ts</code>，依赖 P0 存档与 P1 帮派</div>
+  </div>
+  <div class="prop">
+    <div class="hd"><span class="tag t-p2">P2</span><h4>移动端 / 触屏</h4><span class="tag t-m">M</span></div>
+    <div class="desc">虚拟摇杆 + 情境按钮，配合已有的自适应画质分档。浏览器游戏最大的分发优势就是"点开就玩"，放弃移动端等于放弃一半流量。</div>
+    <div class="foot">落点：<code>core/Input.ts</code> + <code>ui/TouchControls.ts</code></div>
+  </div>
+</div>
+
+<!-- ============ 9 路线图 ============ -->
+<h2 id="roadmap">⑨ 建议路线图<span class="en">ROADMAP</span></h2>
+<div class="grid g3">
+  <div class="card" style="border-color:rgba(255,91,91,.4)">
+    <h3 style="margin-top:0;color:var(--red)">阶段一 · 让人愿意玩第二次</h3>
+    <p style="font-size:13px;color:var(--dim)">约 1 周 · 目标：单局时长 20min → 2h</p>
+    <ul>
+      <li>存档系统（P0）</li>
+      <li>车库与购车（P0）</li>
+      <li>支线任务生成器（P0）</li>
+      <li>死亡惩罚重构 + 通缉搜索圈</li>
+      <li>红绿灯生效 + 路边停放车可抢</li>
+    </ul>
+    <p style="font-size:12.5px;color:var(--dim);margin-top:8px">验收：通关主线后仍有明确的下一个目标；金钱曲线可持续上升。</p>
+  </div>
+  <div class="card" style="border-color:rgba(255,154,61,.4)">
+    <h3 style="margin-top:0;color:var(--orange)">阶段二 · 让世界立得住</h3>
+    <p style="font-size:13px;color:var(--dim)">约 2–3 周 · 目标：可信度与压力曲线</p>
+    <ul>
+      <li>行人渲染降本 → 密度提到 80+</li>
+      <li>通缉 4★–5★ + 路障 / 直升机</li>
+      <li>帮派与地盘、抢劫玩法</li>
+      <li>瞄准态 + 武器差异化 + 车型分级</li>
+      <li>全屏地图、手柄、动态配乐</li>
+    </ul>
+    <p style="font-size:12.5px;color:var(--dim);margin-top:8px">验收：3★ 以上逃脱需要真正的路线规划；街道任意时刻都有人和车。</p>
+  </div>
+  <div class="card" style="border-color:rgba(127,196,255,.4)">
+    <h3 style="margin-top:0;color:var(--blue)">阶段三 · 扩张</h3>
+    <p style="font-size:13px;color:var(--dim)">1 个月+ · 目标：分发与留存</p>
+    <ul>
+      <li>竞速赛事 + 房产被动收入</li>
+      <li>多人联机（先小游戏后自由城）</li>
+      <li>空中载具 + 远景城市剪影</li>
+      <li>移动端触屏</li>
+      <li>资源压缩（Draco / KTX2）降首屏</li>
+    </ul>
+    <p style="font-size:12.5px;color:var(--dim);margin-top:8px">验收：首屏 &lt;5s；有可分享的社交场景。</p>
+  </div>
+</div>
+
+<div class="callout" style="margin-top:26px">
+  <b>最后一句评审意见：</b>这个项目的技术地基比绝大多数浏览器开放世界原型都扎实——真正欠缺的不是代码，是<strong>让玩家想要下一个东西</strong>的设计。阶段一的三项 P0（存档 / 购车 / 任务生成器）互相咬合，是投入产出比最高的一次改动，建议优先。
+</div>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    评审基于 master 分支 <code>8723f4d</code> 快照 · 源码统计 33 模块 / 8,863 行 TypeScript<br>
+    相关文档：<code>README.md</code>（目录与调参速查）· <code>MANUAL.md</code>（玩家说明书）· <code>game-architecture.html</code>（产品架构文档）· <code>rebuild-prompts/</code>（复刻提示词包）
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

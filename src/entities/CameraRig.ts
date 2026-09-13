@@ -1,0 +1,162 @@
+import * as THREE from 'three';
+import { Physics, RAPIER } from '../core/Physics';
+import type { MouseDelta } from '../core/Input';
+import { wrapAngle } from '../core/MathUtil';
+
+const SENSITIVITY = 0.0025; // 弧度/像素
+const PITCH_MIN = -20 * (Math.PI / 180);
+const PITCH_MAX = 70 * (Math.PI / 180);
+const DISTANCE = 6;
+const HEAD_OFFSET = 1.5; // 注视点在脚底上方的高度
+const PROBE_RADIUS = 0.25; // 球形探测半径，给相机留出安全间隙
+const EXPAND_SPEED = 8; // 遮挡解除后拉远的阻尼系数
+const CHASE_SHRINK_SPEED = 22; // 驾驶时拉近的阻尼系数：快但不瞬移（瞬移=开车穿楼群时持续的画面急跳）
+// 追尾模式
+const CHASE_DISTANCE = 6.5;
+const CHASE_HEAD_OFFSET = 1.3;
+const CHASE_PITCH_MIN = -5 * (Math.PI / 180);
+const CHASE_YAW_FOLLOW = 5; // 相机 yaw 追赶车头朝向的阻尼
+const CHASE_RECENTER = 1.2; // 鼠标环视偏移的自动回中速率
+const CHASE_DIST_PER_KMH = 1 / 40; // 每 km/h 拉远的米数（上限见下）
+const CHASE_DIST_MAX_EXTRA = 2.5;
+
+/**
+ * 第三人称相机，两种模式共享 yaw/pitch/距离状态（切换时无跳切）：
+ * - update：步行轨道模式，鼠标直接控制 yaw/pitch。
+ * - updateChase：驾驶追尾模式，yaw 阻尼跟随车头，鼠标做临时环视（自动回中），
+ *   距离随车速拉远。
+ * 两种模式都做球形 shape cast 防穿墙——拉近瞬时，拉远带阻尼。
+ */
+export class CameraRig {
+  private yaw = 0;
+  private pitch = 20 * (Math.PI / 180);
+  private currentDistance = DISTANCE;
+  private chaseYawOffset = 0;
+  private zoom = 1; // 滚轮缩放系数（乘在目标距离上），朝 zoomTarget 阻尼过渡
+  private zoomTarget = 1;
+
+  private readonly camera: THREE.PerspectiveCamera;
+  private readonly physics: Physics;
+  private exclude: RAPIER.Collider;
+  private readonly probe = new RAPIER.Ball(PROBE_RADIUS);
+
+  private readonly target = new THREE.Vector3();
+  private readonly offsetDir = new THREE.Vector3();
+
+  constructor(camera: THREE.PerspectiveCamera, physics: Physics, excludeCollider: RAPIER.Collider) {
+    this.camera = camera;
+    this.physics = physics;
+    this.exclude = excludeCollider;
+  }
+
+  /** 切换跟随目标时更新墙体探测要排除的碰撞体（角色胶囊/载具底盘） */
+  setExcludeCollider(collider: RAPIER.Collider): void {
+    this.exclude = collider;
+  }
+
+  /** 滚轮缩放：向上滚拉近、向下滚拉远（指数映射；实际缩放带阻尼跟随，丝滑不跳档） */
+  applyWheel(deltaY: number): void {
+    if (deltaY === 0) return;
+    this.zoomTarget = THREE.MathUtils.clamp(this.zoomTarget * Math.exp(deltaY * 0.0011), 0.35, 2.8);
+  }
+
+  private smoothZoom(dt: number): void {
+    this.zoom += (this.zoomTarget - this.zoom) * (1 - Math.exp(-10 * dt));
+  }
+
+  /** 步行模式。feetPos 为角色脚底（刚体中心）位置。 */
+  update(dt: number, feetPos: THREE.Vector3, mouse: MouseDelta): void {
+    this.yaw -= mouse.x * SENSITIVITY;
+    this.pitch = THREE.MathUtils.clamp(this.pitch + mouse.y * SENSITIVITY, PITCH_MIN, PITCH_MAX);
+    this.smoothZoom(dt);
+    // 缩放变化期间拉近走阻尼通道（瞬时通道只留给防穿墙）
+    const zooming = Math.abs(this.zoomTarget - this.zoom) > 0.002;
+    this.applyOrbit(dt, feetPos, HEAD_OFFSET, DISTANCE * this.zoom, !zooming);
+  }
+
+  /**
+   * 驾驶追尾模式。headingYaw 为车头朝向（弧度），speedKmh 取绝对值。
+   * 鼠标横向做临时环视（松手自动回中到车尾），纵向调 pitch。
+   */
+  updateChase(
+    dt: number,
+    feetPos: THREE.Vector3,
+    headingYaw: number,
+    speedKmh: number,
+    mouse: MouseDelta,
+  ): void {
+    this.chaseYawOffset -= mouse.x * SENSITIVITY;
+    this.chaseYawOffset *= Math.exp(-CHASE_RECENTER * dt);
+    this.pitch = THREE.MathUtils.clamp(
+      this.pitch + mouse.y * SENSITIVITY,
+      CHASE_PITCH_MIN,
+      PITCH_MAX,
+    );
+
+    // 相机 yaw 阻尼追赶"车尾方向 + 环视偏移"
+    const targetYaw = headingYaw + Math.PI + this.chaseYawOffset;
+    const delta = wrapAngle(targetYaw - this.yaw);
+    this.yaw += delta * (1 - Math.exp(-CHASE_YAW_FOLLOW * dt));
+
+    this.smoothZoom(dt);
+    const distance =
+      (CHASE_DISTANCE + Math.min(speedKmh * CHASE_DIST_PER_KMH, CHASE_DIST_MAX_EXTRA)) * this.zoom;
+    this.applyOrbit(dt, feetPos, CHASE_HEAD_OFFSET, distance, false);
+  }
+
+  /** 共享尾段：由 yaw/pitch 求相机方位 → 球形防穿墙 → 距离阻尼 → 落位 */
+  private applyOrbit(
+    dt: number,
+    feetPos: THREE.Vector3,
+    headOffset: number,
+    desiredDistance: number,
+    snapIn: boolean,
+  ): void {
+    this.target.copy(feetPos).y += headOffset;
+
+    const cosP = Math.cos(this.pitch);
+    this.offsetDir.set(Math.sin(this.yaw) * cosP, Math.sin(this.pitch), Math.cos(this.yaw) * cosP);
+
+    // 球形射线：从注视点沿 offsetDir 扫出去，命中即为允许的最大相机距离
+    const hit = this.physics.world.castShape(
+      this.target,
+      { x: 0, y: 0, z: 0, w: 1 },
+      this.offsetDir,
+      this.probe,
+      0,
+      desiredDistance,
+      false,
+      undefined,
+      undefined,
+      this.exclude,
+      this.exclude.parent() ?? undefined, // 排除整个刚体：载具底盘+车顶舱盒都不挡相机
+    );
+    const allowed = hit ? Math.max(hit.time_of_impact, 0.2) : desiredDistance;
+
+    if (allowed < this.currentDistance) {
+      if (snapIn) {
+        this.currentDistance = allowed; // 步行：瞬时拉近，绝不穿墙
+      } else {
+        // 驾驶：高速阻尼拉近。楼角掠过时相机轻推而非急跳，短暂轻微穿插可接受
+        const k = 1 - Math.exp(-CHASE_SHRINK_SPEED * dt);
+        this.currentDistance += (allowed - this.currentDistance) * k;
+      }
+    } else {
+      const k = 1 - Math.exp(-EXPAND_SPEED * dt);
+      this.currentDistance += (allowed - this.currentDistance) * k;
+    }
+
+    this.camera.position.copy(this.target).addScaledVector(this.offsetDir, this.currentDistance);
+    this.camera.lookAt(this.target);
+  }
+
+  /** 相机在 XZ 平面上的前方（供移动方向映射） */
+  getFlatForward(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+  }
+
+  /** 相机在 XZ 平面上的右方 */
+  getFlatRight(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+  }
+}
