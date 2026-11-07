@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PITCH, CITY_MIN_BLOCK_X, SIDEWALK_LINE } from '../world/City';
+import { safePedestrianBlockX } from '../world/ShanghaiLayout';
 import type { PersonInstance, PersonLibrary } from '../core/Loader';
 import type { GameAudio } from '../core/Audio';
 import type { HealthSystem } from './Health';
@@ -39,7 +40,7 @@ export class TaxiJobs {
     this.audio = audio;
     this.health = health;
 
-    this.passenger = personLib.spawn('Rogue');
+    this.passenger = personLib.spawn('animated-woman');
     this.passenger.root.visible = false;
     scene.add(this.passenger.root);
     const idle = this.passenger.actions.get('Idle');
@@ -155,11 +156,12 @@ export class TaxiJobs {
   private pickCorner(from: THREE.Vector3, min: number, max: number, out: THREE.Vector3): void {
     const angle = Math.random() * Math.PI * 2;
     const dist = min + Math.random() * (max - min);
-    const bx = Math.max(
+    let bx = Math.max(
       Math.round((from.x + Math.cos(angle) * dist) / PITCH) * PITCH,
       CITY_MIN_BLOCK_X,
     );
     const bz = Math.round((from.z + Math.sin(angle) * dist) / PITCH) * PITCH;
+    bx = safePedestrianBlockX(bx, bz);
     const sx = Math.random() < 0.5 ? 1 : -1;
     const sz = Math.random() < 0.5 ? 1 : -1;
     out.set(bx + sx * SIDEWALK_LINE, 0, bz + sz * SIDEWALK_LINE);

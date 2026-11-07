@@ -1,96 +1,81 @@
-# 开放世界原型(GTA-like)
+# 上海开放世界生存游戏
 
-Three.js + Rapier 物理的浏览器开放世界游戏原型:程序化城市、昼夜天气、驾驶/骑行/游泳/开船、
-行人与交通 AI、武器、通缉系统、生命值、经济闭环、主线剧情。
+基于 **Three.js、TypeScript、Rapier** 的浏览器 3D 游戏样本。在上海滨江地图中自由探索、搜集装备与服装、驾驶载具、游泳潜水，也可进入独立单人吃鸡对局。
 
-- **玩家说明书**:见 [MANUAL.md](MANUAL.md)(游戏内按 H 有速查版)
-- **素材来源与许可**:见 [ASSETS.md](ASSETS.md)
-- **产品架构文档**:见 [game-architecture.html](game-architecture.html)(流程图/架构图/游戏逻辑图)
-- **1:1 复刻提示词包**:见 [rebuild-prompts/](rebuild-prompts/README.md)(分阶段 vibe coding 提示词,可让他人从零复刻本游戏)
+## 当前内容
 
-## 运行
+- 外滩、东方明珠、里弄老街、浦东港区，以及可进入的商店、仓库和避难所。
+- 空手开局，拾取装备、弹药、医疗物资、背包、服装与护甲；独立背包页面和小地图。
+- 实体建筑、桥梁、地形和家具碰撞；可下潜的三维水域、海底及航行船只。
+- 汽车、公交、摩托、自行车、快艇、坦克和直升机；直升机有爬升、下降、前倾和侧倾转弯。
+- 避难所仓库、本地存档、死亡掉落回收、敌人据点和随机补给。
+- 独立单机吃鸡：1 名玩家与 7 名 AI，搜装、交战、缩圈、淘汰与结算；不覆盖自由模式存档。
 
-```bash
-npm install
-npm run dev      # http://localhost:5173
-npm run build    # tsc + vite build
+这是持续迭代的风格化 3D 样本，目前没有联网对战或 100 人比赛。
+
+## 最近修正
+
+- 恢复用户指定的七款非警用 Ferrari 配色变体，出生点前方放回完整红色跑车。
+- 近处及驾驶保留原跑车细节，远处使用从同一辆 Ferrari 简化得到的模型。
+- 接入 Quaternius 作者制作的完整蛙泳与踩水动作，适配三套人物骨架，修正独立脚骨和重复身体旋转。
+- 完善三处室内材质、灯光与实体家具，减少交通和水下渲染开销，修正暂停与结算后继续模拟的问题。
+
+详见 [游泳与 Ferrari 修正](SWIMMING_AND_FERRARI_FIX.md)、[场景与性能记录](POLISH_1_3_REVIEW.md)。
+
+## 本地运行
+
+先安装支持 Vite 8 的 Node.js（20.19+ 或 22.12+）。
+
+```powershell
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5175 --strictPort
 ```
 
-## 目录结构
+浏览器打开 http://127.0.0.1:5175/ 。Windows 也可双击 `game-launcher.bat` 启动开发版。
 
-```
-src/
-├── main.ts                 # 组装层:构建所有系统、跨系统回调接线、主循环调度
-├── core/                   # 引擎无关的基础设施
-│   ├── Engine.ts           #   渲染器/相机/后期(bloom)/固定步长循环(fixedUpdate+update)
-│   ├── Physics.ts          #   Rapier world 封装 + setVel/爆炸冲量零分配工具
-│   ├── MathUtil.ts         #   wrapAngle 等共用数学
-│   ├── CharacterAnim.ts    #   骨骼角色共用:剪辑切换(playClip)/插值位姿→根节点
-│   ├── Input.ts            #   键鼠状态(isDown/wasPressed/指针锁定)
-│   ├── Audio.ts            #   WebAudio 全程序化音频:BGM/引擎/风雨/枪炮/警笛/胎鸣/提示音
-│   └── Loader.ts           #   GLB/OBJ 模型库(车辆/人物/建筑道具),模板化 clone
-├── world/                  # 世界生成与环境
-│   ├── City.ts             #   程序化城市数据:街区/楼宇/红绿灯/商店门/楼梯/分区(城市|沙滩|海)
-│   ├── ChunkManager.ts     #   分块流式加载(5×5 chunk),几何合并,昼夜/雨湿联动
-│   ├── Scene.ts            #   光照/天空/太阳(昼夜循环)
-│   ├── Weather.ts          #   雨天系统(粒子+湿度)
-│   └── Doors.ts            #   商店门开合动画
-├── entities/               # 有位姿的游戏实体(物理+视觉,渲染插值)
-│   ├── Character.ts        #   玩家角色:KCC 胶囊+骨骼动画+手臂 IK(骑车握把)
-│   ├── Vehicle.ts          #   载具通用类:四轮悬挂物理/水面浮航/损伤三段/漂移;CAR|MOTO|BOAT|TANK_SPEC
-│   ├── BoatMesh.ts         #   程序化快艇造型
-│   ├── Pedestrians.ts      #   行人 AI 池:人行道巡走/避车逃跑/被撞翻滚/掉钱
-│   ├── Traffic.ts          #   交通 AI 池:路网巡航/刹停/换车交换/剧情跑腿标记
-│   └── CameraRig.ts        #   第三人称相机(碰撞规避+驾驶追尾模式)
-├── gameplay/               # 玩法规则层(操作实体,互相之间用回调解耦)
-│   ├── CharacterController.ts # 步行状态机:走跑跳游/楼梯/击退/硬着陆
-│   ├── PlayerManager.ts    #   步行⇄驾驶切换/抢车/摩托甩人
-│   ├── Weapons.ts          #   武器三件套+弹药/爆炸(explodeAt 供殉爆复用)
-│   ├── Wanted.ts           #   通缉系统:热度→星级/警车追击/警察围捕/视线检测/消退
-│   ├── Health.ts           #   生命值/受伤红屏/死亡黑幕/医院复活/金钱账户
-│   ├── Story.ts            #   主线剧情状态机+字幕框+目标光柱
-│   ├── TaxiJobs.ts         #   出租车载客(经济收入)
-│   ├── Shops.ts            #   武器店/喷漆店(经济支出)
-│   ├── Pickups.ts          #   掉落现金拾取池
-│   └── fx.ts               #   曳光弹共享特效(Weapons/Wanted 共用)
-└── ui/
-    ├── HUD.ts              #   左上调试/状态面板(星级/HP/车况/导航/提示)
-    ├── Minimap.ts          #   右下小地图(canvas)
-    ├── Help.ts             #   H 键游戏指南浮层
-    ├── HealthBar3D.ts      #   行人/警察头顶血条(世界空间)
-    └── Beacon.ts           #   目标/店铺光柱(Story/TaxiJobs/Shops 共用)
+### 构建
+
+```powershell
+npm run build
+npm run preview -- --host 127.0.0.1
 ```
 
-## 架构要点
+标准构建输出在 `dist/`。如需使用 Windows 成品启动器：
 
-**主循环**(Engine 驱动,见 `main.ts` 的 `setHooks`):
+```powershell
+npm run build:play
+```
 
-- `fixedUpdate(60Hz)`:各实体 `beginStep`(记录插值端点、AI 决策、写入物理输入)
-  → `physics.step()` → 各实体 `endStep`(采样物理结果)
-- `update(每帧)`:玩法系统轮询、`syncVisual(alpha)` 按插值系数混合两个物理步的位姿
-  (任何 60Hz 直读都会在高刷屏上抖)、UI/音频刷新
+然后双击 `play-built.bat`；它运行 `scratchpad/polish-build/` 中的生产资源，只需要 Node.js，不运行 Vite 开发服务器。固定使用 5175 端口；若该端口正在运行开发版，请先关闭对应开发服务器。
 
-**解耦约定**:gameplay 系统之间不互相 import 实例,跨系统事件用公开回调字段
-(如 `weapons.onCrime`、`pedestrians.onHitByPlayerCar`、`vehicle.onExploded`),
-统一在 `main.ts` 接线——看 main 即可读出全部系统交互。
+## 操作
 
-**对象池**:行人/交通车/警力/曳光/烟火/现金全部固定池复用,运行期零常态分配
-(`setLinvel` 参数对象也复用,避免 GC 峰值掉帧)。
+| 操作 | 按键 |
+| --- | --- |
+| 移动 / 视角 | WASD / 鼠标 |
+| 奔跑或加速游泳 | Shift |
+| 岸上翻滚跳跃 / 水中上浮 | Space |
+| 下潜 | Ctrl |
+| 拾取 / 背包 | G / I |
+| 上下载具 | E |
+| 避难所仓库 | F |
+| 暂停 / 帮助 | Esc / H |
+| 直升机前后 / 转弯 | W、S / A、D |
+| 直升机上升 / 下降 | Space / Shift |
 
-**载具即插槽**:玩家"抢车"不生成新载具,而是主车瞬移换装(`teleportTo`+`setCarType`),
-AI 车原地变成停放的旧车——所有权模型 O(1)。
+红色 Ferrari 在出生点前方约 `(16,26)`；避难所在 `(40,88)`，弄堂小铺在 `(-96,32)`，三号仓库在 `(200,192)`。
 
-**世界流式加载**:LOAD_RADIUS=2(240m 见方),远处实体会踩空——
-剧情奖励载具用 `setStashed`(物理禁用+隐藏)暂存,船靠水面浮力自持不受影响。
+存档保存在当前浏览器配置和游戏地址的本地存储中。换浏览器、配置、域名或端口不会自动共享进度；仓库、装备和世界物资会保存，交通、载具位置及天气等仍不持久化。
 
-## 数值调参速查
+## 文档与资源
 
-| 系统 | 位置 |
-|---|---|
-| 车辆悬挂/动力/漂移摩擦 | `entities/Vehicle.ts` 顶部常量区 |
-| 通缉热度/警力/视距/衰减 | `gameplay/Wanted.ts` 顶部常量区 |
-| 伤害数值/回血/医院费 | `gameplay/Health.ts` 顶部 + `main.ts` 接线处 |
-| 商店价格 | `gameplay/Shops.ts` 顶部 |
-| 出租车计价 | `gameplay/TaxiJobs.ts` 顶部 |
-| 行人/交通密度 | `entities/Pedestrians.ts`、`entities/Traffic.ts` 顶部 |
-| 剧情坐标/台词 | `gameplay/Story.ts` |
+- [操作手册](MANUAL.md)
+- [上海地图试玩指南](SHANGHAI_MAP_GUIDE.md)
+- [分阶段开发记录](SHANGHAI_SURVIVAL_PLAN.md)
+- [素材来源和许可](ASSETS.md)
+- [原始产品架构文档](game-architecture.html)
+- [原始复刻提示词包](rebuild-prompts/README.md)
+
+运行资源随仓库提供，游戏运行时无需连接素材 CDN。第三方模型、贴图、音效和字体各自遵循其许可，不能把整个资源目录视为统一的 MIT 或 CC0 资产。对应说明见 `ASSETS.md` 和 `public/licenses/`。
+
+`src/core` 包含引擎、物理、加载与动画适配；`src/world` 包含城市分块、上海场景和水域；`src/entities` 包含人物和载具；`src/gameplay` 包含生存及竞技规则；`src/ui` 包含背包、地图和界面。

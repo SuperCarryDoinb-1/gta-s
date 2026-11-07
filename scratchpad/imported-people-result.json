@@ -1,0 +1,59 @@
+[
+  {
+    "type": "adventurer",
+    "height": 1.882307769198133,
+    "actions": [
+      "Idle",
+      "Walking_A",
+      "Running_A",
+      "Jump_Idle",
+      "Death_A",
+      "Interact",
+      "Throw",
+      "1H_Ranged_Aiming",
+      "2H_Ranged_Aiming",
+      "Sit_Chair_Idle",
+      "Sit_Chair_Down",
+      "Sit_Chair_StandUp"
+    ],
+    "bones": 62
+  },
+  {
+    "type": "animated-woman",
+    "height": 1.7949052789915543,
+    "actions": [
+      "Idle",
+      "Walking_A",
+      "Running_A",
+      "Jump_Idle",
+      "Death_A",
+      "Interact",
+      "Throw",
+      "1H_Ranged_Aiming",
+      "2H_Ranged_Aiming",
+      "Sit_Chair_Idle",
+      "Sit_Chair_Down",
+      "Sit_Chair_StandUp"
+    ],
+    "bones": 62
+  },
+  {
+    "type": "man",
+    "height": 1.755279296446064,
+    "actions": [
+      "Idle",
+      "Walking_A",
+      "Running_A",
+      "Jump_Idle",
+      "Death_A",
+      "Interact",
+      "Throw",
+      "1H_Ranged_Aiming",
+      "2H_Ranged_Aiming",
+      "Sit_Chair_Idle",
+      "Sit_Chair_Down",
+      "Sit_Chair_StandUp"
+    ],
+    "bones": 31
+  }
+]

@@ -28,6 +28,7 @@ export class MenuDrone {
   private ready = false;
   private disposed = false;
   private enabled = true;
+  private active = true;
   private readonly size = 300;
   private vx = 0;
   private vy = 0;
@@ -64,12 +65,25 @@ export class MenuDrone {
       if (e.key === 'Escape') { this.confirming = false; this.panel.hidden = true; this.mouse.x = -1000; }
     }, { signal });
     window.addEventListener('blur', () => { this.mouse.x = -1000; }, { signal });
-    window.addEventListener('intro:started', () => this.dispose(), { signal });
-    window.addEventListener('game:started', () => this.dispose(), { signal });
+    window.addEventListener('intro:started', () => this.setActive(false), { signal });
+    window.addEventListener('game:started', () => this.setActive(false), { signal });
+    window.addEventListener('game:home', () => this.setActive(true), { signal });
     void this.load();
   }
 
   setEnabled(enabled: boolean): void { this.enabled = enabled; }
+
+  private setActive(active: boolean): void {
+    this.active = active;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.last = 0;
+    this.mouse.x = -1000;
+    this.confirming = false;
+    this.panel.hidden = true;
+    this.host.hidden = !active || !this.ready;
+    if (active && this.ready && !this.disposed) this.frame = requestAnimationFrame(this.tick);
+  }
 
   private async load(): Promise<void> {
     const decoder = new DRACOLoader().setDecoderPath('/draco/');
@@ -107,9 +121,9 @@ export class MenuDrone {
         const hover = gltf.animations.find(clip => clip.name === 'hover');
         if (hover) this.mixer.clipAction(hover).play();
       }
-      this.ready = true; this.host.hidden = false;
+      this.ready = true; this.host.hidden = !this.active;
       this.host.animate([{ opacity: 0, filter: 'blur(4px)' }, { opacity: 1, filter: 'blur(0)' }], { duration: this.enabled ? 800 : 0 });
-      this.frame = requestAnimationFrame(this.tick);
+      if (this.active) this.frame = requestAnimationFrame(this.tick);
     } catch (error) {
       console.warn('Flying Drone 尚未加载；首页其余功能保持可用。', error);
       this.dispose();
@@ -117,7 +131,7 @@ export class MenuDrone {
   }
 
   private showPanel(confirm: boolean): void {
-    if (!this.ready || this.disposed) return;
+    if (!this.ready || this.disposed || !this.active) return;
     if (!this.panel.hidden && this.confirming === confirm) return;
     this.confirming = confirm;
     this.panel.innerHTML = confirm
@@ -147,7 +161,7 @@ export class MenuDrone {
   }
 
   private tick = (now: number): void => {
-    if (this.disposed) return;
+    if (this.disposed || !this.active) return;
     const dt = Math.min((now - (this.last || now)) / 1000, .04); this.last = now;
     const paused = document.hidden || !!document.querySelector('dialog[open]');
     this.host.hidden = paused;

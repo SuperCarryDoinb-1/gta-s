@@ -1,0 +1,50 @@
+{
+  "bootMs": 41395,
+  "checks": [
+    {
+      "url": "/",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8"
+    },
+    {
+      "url": "/models/cars/taxi.glb",
+      "method": "HEAD",
+      "status": 200,
+      "type": "model/gltf-binary"
+    },
+    {
+      "url": "/draco/draco_decoder.wasm",
+      "method": "HEAD",
+      "status": 200,
+      "type": "application/wasm"
+    },
+    {
+      "url": "/src/main.ts",
+      "method": "GET",
+      "status": 404,
+      "type": null
+    },
+    {
+      "url": "/%2e%2e%2fpackage.json",
+      "method": "GET",
+      "status": 403,
+      "type": null
+    },
+    {
+      "url": "/%xx",
+      "method": "GET",
+      "status": 400,
+      "type": null
+    },
+    {
+      "url": "/",
+      "method": "POST",
+      "status": 405,
+      "type": null
+    }
+  ],
+  "errors": [],
+  "gpuErrors": [],
+  "httpErrors": []
+}

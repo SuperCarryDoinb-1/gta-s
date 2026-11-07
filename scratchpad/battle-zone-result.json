@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "initialRadius": 144,
+  "firstMidpoint": 122,
+  "finalRadius": 0,
+  "terminalDamage": 20,
+  "monotonic": true
+}

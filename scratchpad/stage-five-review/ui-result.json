@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "desktop720": true,
+  "mobile390": true,
+  "modeGuide": true,
+  "inventoryPausesMatch": true,
+  "visibleResult": true,
+  "errors": []
+}

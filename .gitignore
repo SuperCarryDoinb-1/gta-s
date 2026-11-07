@@ -11,6 +11,10 @@ node_modules
 .game-browser/
 dist
 dist-ssr
+scratchpad/browser-tmp/
+scratchpad/driving-browser-profile/
+scratchpad/browser-tools/
+scratchpad/npm-cache/
 *.local
 
 # Editor directories and files
@@ -23,3 +27,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+scratchpad/scene-browser-temp/
+scratchpad/scene-browser-profile/
+
+# Local upload metadata, assistant settings and runtime data
+.github-upload.git/
+.claude/
+.agents/
+.codex/
+scratchpad/**/tmp/
+scratchpad/**/*profile*/
+scratchpad/**/*-build/
+scratchpad/animation-source/
+scratchpad/map-rollback-backup/
+/*.glb

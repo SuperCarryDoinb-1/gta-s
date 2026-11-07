@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "errors": [],
+  "checks": [
+    "I open/close",
+    "Esc closes inventory only",
+    "mouse unlock does not pause twice",
+    "simulation and input frozen",
+    "vicinity pickup",
+    "capacity grid",
+    "duplicate atomicity",
+    "bandage mouse use",
+    "equip mouse action",
+    "390px responsive",
+    "minimap visibility",
+    "pause/home interaction"
+  ]
+}

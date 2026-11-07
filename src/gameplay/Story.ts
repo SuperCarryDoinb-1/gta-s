@@ -91,7 +91,7 @@ export class StorySystem {
     });
 
     // 老周：修车行门口站桩 NPC
-    this.zhou = personLib.spawn('Barbarian');
+    this.zhou = personLib.spawn('man');
     this.zhou.root.position.set(ZHOU_X, 0.04, ZHOU_Z);
     this.zhou.root.rotation.y = -Math.PI / 4;
     scene.add(this.zhou.root);

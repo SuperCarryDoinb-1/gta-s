@@ -1,0 +1,33 @@
+{
+  "errors": [],
+  "checks": [
+    {
+      "name": "G enters actual room; stable floor",
+      "passed": true
+    },
+    {
+      "name": "Walk inside room",
+      "passed": true
+    },
+    {
+      "name": "Outdoor bodies frozen indoors",
+      "passed": true
+    },
+    {
+      "name": "Glass wall blocks walking",
+      "passed": true
+    },
+    {
+      "name": "G returns to original entrance",
+      "passed": true
+    },
+    {
+      "name": "Repeated round trips do not leak colliders",
+      "passed": true
+    },
+    {
+      "name": "Car drives on imported street",
+      "passed": true
+    }
+  ]
+}

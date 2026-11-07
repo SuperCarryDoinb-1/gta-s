@@ -5,11 +5,10 @@ import type { HealthSystem } from './Health';
 import type { WeaponSystem } from './Weapons';
 import type { WantedSystem } from './Wanted';
 import type { Vehicle } from '../entities/Vehicle';
-import { Beacon } from '../ui/Beacon';
 
 // 武器店/喷漆店位置（人行道拐角）
-const GUN_X = 53.5;
-const GUN_Z = 10.5;
+const GUN_X = 0;
+const GUN_Z = 32;
 const SPRAY_X = -42.5;
 const SPRAY_Z = 74.5;
 
@@ -40,7 +39,7 @@ export class Shops {
   private msgTimer = 0;
 
   constructor(
-    scene: THREE.Scene,
+    _scene: THREE.Scene,
     input: Input,
     audio: GameAudio,
     health: HealthSystem,
@@ -54,8 +53,6 @@ export class Shops {
     this.wanted = wanted;
 
     // 店铺光柱（比剧情金柱矮且淡,常亮不脉动）
-    new Beacon(scene, 0x54a8ff, { radius: 1, height: 10, opacity: 0.16 }).setPosition(GUN_X, GUN_Z);
-    new Beacon(scene, 0xff9a3d, { radius: 1, height: 10, opacity: 0.16 }).setPosition(SPRAY_X, SPRAY_Z);
 
     this.panel = document.createElement('div');
     this.panel.style.cssText =
@@ -127,8 +124,14 @@ export class Shops {
   }
 
   private buyAmmo(kind: 'pistol' | 'mg' | 'grenade', price: number, count: number): void {
-    if (this.health.spend(price)) {
-      this.weapons.addAmmo(kind, count);
+    if (kind !== 'grenade' && !this.weapons.owns(kind)) {
+      this.toast('请先在城市中找到这把武器');
+      return;
+    }
+    if (this.health.money >= price) {
+      const error = this.weapons.addAmmo(kind, count);
+      if (error) { this.toast(error); return; }
+      this.health.spend(price);
       this.audio.blip();
       this.toast(`✓ 已购买（-$${price}）`);
     } else {

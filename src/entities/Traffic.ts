@@ -1,8 +1,11 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Physics, RAPIER } from '../core/Physics';
+import { safeRoadX } from '../world/ShanghaiLayout';
 import { CITY_MIN_BLOCK_X, PITCH, DIR_X, DIR_Z, LANE_X, LANE_Z, snapToRoad, advanceOnRoad } from '../world/City';
 import { CarLibrary, TRAFFIC_TYPES, type CarType } from '../core/Loader';
 import { wrapAngle } from '../core/MathUtil';
+import { driveRoadCar, roadCarBody } from './AICarPhysics';
 
 const CAR_COUNT = 6;
 const CRUISE = 8; // m/s
@@ -51,6 +54,11 @@ interface AICar {
  * 远离玩家即回收重生，城市区外不生成。
  */
 export class TrafficSystem {
+  private enabled = true;
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    for (const c of this.cars) { c.body.setEnabled(enabled); c.group.visible = enabled; }
+  }
   private readonly cars: AICar[] = [];
   private carLib!: CarLibrary;
   private readonly physics: Physics;
@@ -61,23 +69,21 @@ export class TrafficSystem {
     this.physics = physics;
     for (let i = 0; i < CAR_COUNT; i++) {
       const type = TRAFFIC_TYPES[i % TRAFFIC_TYPES.length]!;
-      const model = carLib.clone(type, false);
+      const model = carLib.cloneTraffic(type);
       const group = new THREE.Group();
-      const lightGeo = new THREE.BoxGeometry(0.3, 0.12, 0.06);
+      const left = new THREE.BoxGeometry(.3, .12, .06).translate(.55, 0, 0);
+      const right = new THREE.BoxGeometry(.3, .12, .06).translate(-.55, 0, 0);
+      const lightGeo = mergeGeometries([left, right])!; left.dispose(); right.dispose();
       const hl = new THREE.Mesh(lightGeo, TRAFFIC_HEAD_MAT);
-      hl.position.set(0.55, 0.74, 2.26);
-      const hr = hl.clone();
-      hr.position.x = -0.55;
+      hl.position.set(0, 0.74, 2.26);
       const tl = new THREE.Mesh(lightGeo, TRAFFIC_TAIL_MAT);
-      tl.position.set(0.55, 0.74, -2.26);
-      const tr = tl.clone();
-      tr.position.x = -0.55;
-      group.add(model, hl, hr, tl, tr);
+      tl.position.set(0, 0.74, -2.26);
+      group.add(model, hl, tl);
       this.attachLights(model);
-      for (const lamp of [hl, hr, tl, tr]) lamp.visible = false;
       scene.add(group);
 
-      const body = physics.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
+      const body = physics.world.createRigidBody(roadCarBody());
+      physics.registerVehicle(body);
 
       const car: AICar = {
         body,
@@ -111,7 +117,8 @@ export class TrafficSystem {
       if (!b) continue;
       car.colliders.push(
         this.physics.world.createCollider(
-          RAPIER.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(0, b.cy, b.cz),
+          RAPIER.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(0, b.cy, b.cz)
+            .setMass(b === spec.body ? 620 : 0).setFriction(0.4).setRestitution(0.05),
           car.body,
         ),
       );
@@ -120,6 +127,7 @@ export class TrafficSystem {
 
   /** 每物理步调用（physics.step 之前） */
   fixedUpdate(dt: number, playerPos: THREE.Vector3, playerCarPos: THREE.Vector3): void {
+    if (!this.enabled) return;
     for (const car of this.cars) {
       car.prevPos.copy(car.currPos);
       car.prevYaw = car.currYaw;
@@ -131,7 +139,10 @@ export class TrafficSystem {
         this.respawn(car, playerPos);
         continue;
       }
-      if (car.parked) continue; // 停放车原地不动
+      if (car.parked) {
+        driveRoadCar(car.body, car.currPos.x, car.currPos.z, car.currYaw, 0, dt);
+        continue;
+      }
 
       // 前方障碍检测（玩家、玩家车、其他 AI 车）→ 刹车
       const fx = DIR_X[car.dir]!;
@@ -149,15 +160,25 @@ export class TrafficSystem {
       car.speed += (targetSpeed - car.speed) * (1 - Math.exp(-4 * dt));
 
       car.currYaw = advanceOnRoad(car, car.speed, dt, randomTurn);
-      car.body.setNextKinematicTranslation({ x: car.currPos.x, y: 0, z: car.currPos.z });
-      car.body.setNextKinematicRotation(
-        { x: 0, y: Math.sin(car.currYaw / 2), z: 0, w: Math.cos(car.currYaw / 2) },
-      );
+      driveRoadCar(car.body, car.currPos.x, car.currPos.z, car.currYaw, car.speed, dt);
+      car.currPos.copy(car.prevPos);
+      car.currYaw = car.prevYaw;
+    }
+  }
+
+  /** Render the resolved physics position, including pushes and collisions. */
+  endStep(): void {
+    if (!this.enabled) return;
+    for (const car of this.cars) {
+      const p = car.body.translation(), q = car.body.rotation();
+      car.currPos.set(p.x, p.y, p.z);
+      car.currYaw = Math.atan2(2 * q.w * q.y, 1 - 2 * q.y * q.y);
     }
   }
 
   /** 最近可上车：返回索引，无则 -1 */
   findNearest(pos: THREE.Vector3, maxDist: number): number {
+    if (!this.enabled) return -1;
     let best = -1;
     let bestD = maxDist * maxDist;
     for (let i = 0; i < this.cars.length; i++) {
@@ -207,6 +228,8 @@ export class TrafficSystem {
     car.speed = 0;
     car.body.setTranslation({ x: oldX, y: 0, z: oldZ }, false);
     car.body.setRotation({ x: 0, y: Math.sin(oldYaw / 2), z: 0, w: Math.cos(oldYaw / 2) }, false);
+    car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    car.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     car.group.position.copy(car.currPos);
     car.group.rotation.y = oldYaw;
     return taken;
@@ -214,6 +237,7 @@ export class TrafficSystem {
 
   /** 遍历所有 AI 车位置（小地图用） */
   forEachCar(cb: (x: number, z: number) => void): void {
+    if (!this.enabled) return;
     for (const car of this.cars) cb(car.currPos.x, car.currPos.z);
   }
 
@@ -238,11 +262,11 @@ export class TrafficSystem {
   private setCarModel(car: AICar, type: CarType): void {
     car.type = type;
     car.group.remove(car.model);
-    car.model = this.carLib.clone(type, false);
+    car.model = this.carLib.cloneTraffic(type);
     car.group.add(car.model);
     this.attachLights(car.model);
     for (const child of car.group.children) {
-      if (child instanceof THREE.Mesh) child.visible = type === 'police';
+      if (child instanceof THREE.Mesh) child.visible = true;
     }
     this.applyCollider(car);
   }
@@ -269,6 +293,7 @@ export class TrafficSystem {
 
   /** 渲染前插值 */
   syncVisual(alpha: number): void {
+    if (!this.enabled) return;
     for (const car of this.cars) {
       car.group.position.lerpVectors(car.prevPos, car.currPos, alpha);
       car.group.rotation.y = car.prevYaw + wrapAngle(car.currYaw - car.prevYaw) * alpha;
@@ -296,9 +321,17 @@ export class TrafficSystem {
       car.currPos.set(Math.max(px, CITY_MIN_BLOCK_X), 0, snapToRoad(pz) + LANE_Z[car.dir]!);
     }
     car.speed = CRUISE;
+    const safeX = safeRoadX(car.currPos.x, car.currPos.z);
+    if (safeX !== car.currPos.x) {
+      car.dir = Math.random() < .5 ? 0 : 2;
+      car.currPos.x = safeX + LANE_X[car.dir]!;
+    }
     car.currYaw = Math.atan2(DIR_X[car.dir]!, DIR_Z[car.dir]!);
     car.prevPos.copy(car.currPos);
     car.prevYaw = car.currYaw;
     car.body.setTranslation({ x: car.currPos.x, y: 0, z: car.currPos.z }, false);
+    car.body.setRotation({ x: 0, y: Math.sin(car.currYaw / 2), z: 0, w: Math.cos(car.currYaw / 2) }, true);
+    car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    car.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 }

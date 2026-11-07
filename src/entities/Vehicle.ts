@@ -2,8 +2,11 @@
 import { Physics, RAPIER } from '../core/Physics';
 import { CHUNK_SIZE, chunkZone } from '../world/City';
 import { CarLibrary, type CarType } from '../core/Loader';
+import { HelicopterFlight } from './HelicopterFlight';
 
 export interface DriveInput {
+  lift?: number;
+  piloted?: boolean;
   /** 油门 [-1, 1]，正为前进；行驶中反向输入自动视为刹车，停稳后才倒车 */
   throttle: number;
   /** 转向 [-1, 1]，正为左转；实际转角随车速衰减 */
@@ -63,6 +66,8 @@ const PADDLE_TURN = 1.6;
 
 /** 载具规格：轿车/摩托共用一套物理，参数不同 */
 export interface VehicleSpec {
+  flying?: boolean;
+  label?: string;
   half: { x: number; y: number; z: number };
   mass: number;
   comDrop: number;
@@ -219,6 +224,8 @@ const FX_POOL = 14;
  * fixedUpdate 需在 physics.step() 之前调用。
  */
 export class Vehicle {
+  rotor: THREE.Object3D | null = null;
+  readonly flight = new HelicopterFlight();
   readonly mesh: THREE.Group;
   readonly chassisBody: RAPIER.RigidBody;
   readonly chassisCollider: RAPIER.Collider;
@@ -235,6 +242,9 @@ export class Vehicle {
   private carGroup!: THREE.Group;
   private currentType: CarType = 'sedan-sports';
   private readonly headlights: THREE.SpotLight[] = [];
+  private static readonly sceneHeadlights = new WeakMap<THREE.Scene, THREE.SpotLight[]>();
+  private readonly lampPosition = new THREE.Vector3();
+  private readonly lampTarget = new THREE.Vector3();
   private steering = 0;
   readonly spec: VehicleSpec;
   /** 本步前向速度骤降量（撞击探测，摩托甩人用） */
@@ -290,8 +300,11 @@ export class Vehicle {
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(spawn.x, spawn.y, spawn.z)
       .setCcdEnabled(true); // 连续碰撞检测：高速坠落/冲撞不穿透薄碰撞体（掉入地下的元凶之一）
-    if (spec.upright) bodyDesc.enabledRotations(false, true, false); // 摩托：只允许偏航
+    if (spec.upright && !spec.flying) bodyDesc.enabledRotations(false, true, false);
     this.chassisBody = physics.world.createRigidBody(bodyDesc);
+    physics.registerVehicle(this.chassisBody);
+    this.chassisBody.setAdditionalSolverIterations(4);
+    this.chassisBody.setSoftCcdPrediction(1.2);
     // 手动指定质量属性：质心下移，惯量按盒体公式
     const half = spec.half;
     const mass = spec.mass;
@@ -372,13 +385,18 @@ export class Vehicle {
     this.lampMeshes.push(hlL, hlR, tlL, tlR);
 
     // 夜间真实大灯：两盏前向聚光灯（只给玩家车，成本可控）
-    for (const sx of [lampX, -lampX]) {
-      const spot = new THREE.SpotLight(0xffeecc, 0, 45, 0.5, 0.45, 1.4);
-      spot.position.set(sx, lampY + 0.05, lampZF);
-      spot.target.position.set(sx, lampY - 0.65, lampZF + 14);
-      this.mesh.add(spot, spot.target);
-      this.headlights.push(spot);
+    // Keep the scene's light count constant across entry, exit and car theft.
+    // Adding/removing spotlights recompiles every lit material in the city.
+    let lights = Vehicle.sceneHeadlights.get(scene);
+    if (!lights) {
+      lights = [1, -1].map(() => {
+        const spot = new THREE.SpotLight(0xffeecc, 0, 45, 0.5, 0.45, 1.4);
+        scene.add(spot, spot.target);
+        return spot;
+      });
+      Vehicle.sceneHeadlights.set(scene, lights);
     }
+    this.headlights.push(...lights);
 
     if (!spec.hideWheels) {
       const wheelGeo = new THREE.CylinderGeometry(spec.wheelRadius, spec.wheelRadius, spec.wheelWidth, 16);
@@ -450,6 +468,15 @@ export class Vehicle {
   private readonly lastGoodPos = new THREE.Vector3(0, 2, 0);
 
   fixedUpdate(dt: number, drive: DriveInput): void {
+    if (this.spec.flying) {
+      const powered = !!drive.piloted && !this.isWrecked;
+      this.flight.fixedUpdate(dt, this.chassisBody, drive, powered, -this.physicsRef.world.gravity.y);
+      const speed = this.forwardSpeed();
+      this.impactDv = Math.max(0, this.prevForward - speed);
+      this.prevForward = speed;
+      if (this.impactDv > IMPACT_DMG_MIN) this.damage((this.impactDv - IMPACT_DMG_MIN) * 2.5);
+      return;
+    }
     const speedMs = this.forwardSpeed();
 
     // —— 水中模式：浮力 + 划水推进（车轮悬不着底，正常动力失效）——
@@ -663,7 +690,18 @@ export class Vehicle {
   /** 重挂当前车型的实测座舱盒（换车型时高度/范围随之更新） */
   private refreshRoofHull(): void {
     if (this.cabinCollider) this.physicsRef.world.removeCollider(this.cabinCollider, false);
-    const cabin = this.carLib.colliderBoxes(this.currentType).cabin;
+    const { body, cabin } = this.carLib.colliderBoxes(this.currentType);
+    // Fit the lower body too: the old generic chassis left parts of the model
+    // outside its physical hull. Keep the original tuned mass and inertia.
+    // Wheels reach the ground; the solid body must retain suspension clearance.
+    const bottom = Math.max(body.cy - body.hy, 0.18);
+    const halfHeight = Math.max(0.1, (body.cy + body.hy - bottom) / 2);
+    this.chassisCollider.setShape(new RAPIER.Cuboid(body.hx, halfHeight, body.hz));
+    this.chassisCollider.setTranslationWrtParent({
+      x: 0, y: bottom + halfHeight + this.spec.groundOffset, z: body.cz,
+    });
+    this.chassisCollider.setFriction(0.4);
+    this.chassisCollider.setRestitution(0.05);
     if (!cabin) {
       this.cabinCollider = null;
       return;
@@ -702,6 +740,7 @@ export class Vehicle {
    * 粒子池懒创建，材质独立便于各自淡出。
    */
   updateFx(dt: number): void {
+    if (this.rotor && !this.isStashed) this.rotor.rotation.y += dt * this.flight.rotorSpeed * 32;
     const rate = this.isStashed
       ? 0
       : this.isWrecked
@@ -806,8 +845,20 @@ export class Vehicle {
   }
 
   /** 夜色联动：大灯聚光强度 + 灯罩自发光 */
-  setNight(n: number): void {
-    for (const spot of this.headlights) spot.intensity = 130 * n;
+  setNight(n: number, projectHeadlights = false): void {
+    if (projectHeadlights) {
+      const x = this.spec.lamps?.x ?? this.spec.half.x * 0.6;
+      const y = this.spec.lamps?.y ?? 0.05;
+      const z = this.spec.lamps?.zFront ?? this.spec.half.z + 0.01;
+      for (let i = 0; i < this.headlights.length; i++) {
+        const spot = this.headlights[i]!;
+        this.lampPosition.set(i === 0 ? x : -x, y + 0.05, z);
+        this.lampTarget.set(i === 0 ? x : -x, y - 0.65, z + 14);
+        spot.position.copy(this.lampPosition).applyQuaternion(this.mesh.quaternion).add(this.mesh.position);
+        spot.target.position.copy(this.lampTarget).applyQuaternion(this.mesh.quaternion).add(this.mesh.position);
+        spot.intensity = this.isStashed ? 0 : 130 * n;
+      }
+    }
     this.headlightMat.emissiveIntensity = 0.9 + 1.5 * n;
   }
 

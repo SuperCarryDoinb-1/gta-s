@@ -1,0 +1,79 @@
+{
+  "result": {
+    "pickups": [
+      {
+        "kind": "backpack",
+        "used": 0,
+        "position": {
+          "x": 11,
+          "y": 0.971000075340271,
+          "z": 16
+        }
+      },
+      {
+        "kind": "pistol",
+        "used": 1,
+        "position": {
+          "x": 11,
+          "y": 0.971000075340271,
+          "z": 25
+        }
+      },
+      {
+        "kind": "pistolAmmo",
+        "used": 2,
+        "position": {
+          "x": 11,
+          "y": 0.971000075340271,
+          "z": 32
+        }
+      },
+      {
+        "kind": "bandage",
+        "used": 3,
+        "position": {
+          "x": 10.999999046325684,
+          "y": 0.971000075340271,
+          "z": 40
+        }
+      },
+      {
+        "kind": "mg",
+        "used": 4,
+        "position": {
+          "x": 10.999999046325684,
+          "y": 0.971000075340271,
+          "z": 48
+        }
+      },
+      {
+        "kind": "mgAmmo",
+        "used": 5,
+        "position": {
+          "x": 11,
+          "y": 0.971000075340271,
+          "z": 56
+        }
+      },
+      {
+        "kind": "grenade",
+        "used": 6,
+        "position": {
+          "x": 11,
+          "y": 0.971000075340271,
+          "z": 64.00000762939453
+        }
+      }
+    ],
+    "slots": 12,
+    "capacity": 12,
+    "hp": 75.08333333333333,
+    "ammo": {
+      "pistol": 23,
+      "mg": 180,
+      "grenade": 2
+    },
+    "checks": "empty start, ownership, reachable pickups, capacity, bandages, shooting, streaming, commerce, vehicle entry/driving, pickup blocking, UI"
+  },
+  "errors": []
+}

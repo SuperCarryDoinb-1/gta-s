@@ -6,6 +6,8 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
+import { adaptPersonClips } from './ImportedPeople';
+import { loadSwimAnimations, retargetSwimAnimations } from './SwimAnimations';
 
 /**
  * 车辆模型库（Kenney Car Kit，CC0，见 ASSETS.md）。
@@ -81,6 +83,8 @@ export class CarLibrary {
   private readonly templates = new Map<CarType, THREE.Group>();
   private readonly baked = new Map<CarType, CarPart[]>();
   private readonly boxCache = new Map<CarType, CarBoxes>();
+  private readonly farGeometryCache = new Map<THREE.BufferGeometry, THREE.BufferGeometry>();
+  private wheelTemplates: Array<{ model: THREE.Group; center: THREE.Vector3 }> | null = null;
 
   setupSportsReflections(renderer: THREE.WebGLRenderer): void {
     const room = new RoomEnvironment();
@@ -155,15 +159,32 @@ export class CarLibrary {
       if (type === 'police' || type === 'sedan-sports') continue;
       const variant = ferrari.clone(true);
       const body = variant.getObjectByName('body') as THREE.Mesh<THREE.BufferGeometry, THREE.MeshPhysicalMaterial>;
-      body.material = body.material.clone();
-      body.material.color.setHex(CAR_PAINT[type]);
+      body.material = body.material.clone(); body.material.color.setHex(CAR_PAINT[type]);
       lib.templates.set(type, variant);
     }
+    const response = await fetch('/models/cars/ferrari-lod.json');
+    if (!response.ok) throw new Error('Ferrari distance mesh missing');
+    const lod = await response.json() as { parts: Array<{ vertices: number; originalIndices: number; indices: number[] }> };
+    const parts = lib.bakedParts('sedan-sports');
+    if (parts.length !== lod.parts.length) throw new Error('Ferrari LOD does not match the original model');
+    parts.forEach((part,i) => {
+      const data=lod.parts[i]!, original=part.geometry;
+      if(data.vertices!==original.getAttribute('position').count||data.originalIndices!==original.index?.count)throw new Error('Ferrari LOD signature mismatch');
+      const far=new THREE.BufferGeometry();
+      for(const [name,attribute]of Object.entries(original.attributes))far.setAttribute(name,attribute);
+      far.setIndex(data.indices);far.computeBoundingSphere();lib.farGeometryCache.set(original,far);
+    });
     return lib;
   }
 
   /** 将原车轮烘焙到游戏坐标，再以轮心为原点交给物理悬挂/转向驱动。 */
   sportsWheels(): Array<{ model: THREE.Group; center: THREE.Vector3 }> {
+    if (!this.wheelTemplates) this.wheelTemplates = this.bakeSportsWheels();
+    // New playable cars reuse GPU geometry; only the wheel transforms are independent.
+    return this.wheelTemplates.map(wheel => ({ model: wheel.model.clone(true), center: wheel.center.clone() }));
+  }
+
+  private bakeSportsWheels(): Array<{ model: THREE.Group; center: THREE.Vector3 }> {
     const template = this.templates.get('sedan-sports')!;
     template.updateMatrixWorld(true);
     return ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'].map(name => {
@@ -197,6 +218,24 @@ export class CarLibrary {
     return g;
   }
 
+  /** Ambient cars do not animate individual parts; merge them by material. */
+  cloneTraffic(type: CarType): THREE.Group {
+    if (type === 'police') return this.clone(type, false);
+    const group = new THREE.Group(), near = new THREE.Group(), far = new THREE.Group(), lod = new THREE.LOD();
+    for (const part of this.bakedParts(type)) {
+      const mesh = new THREE.Mesh(part.geometry, part.material);
+      mesh.castShadow = mesh.receiveShadow = true;
+      near.add(mesh);
+      const distant = new THREE.Mesh(this.farGeometry(part.geometry), part.material);
+      distant.castShadow = distant.receiveShadow = true;far.add(distant);
+    }
+    near.name='Ferrari-Full-Detail';far.name='Ferrari-Distance';
+    lod.addLevel(near,0);lod.addLevel(far,22,.15);group.add(lod);
+    return group;
+  }
+
+  farGeometry(geometry: THREE.BufferGeometry): THREE.BufferGeometry { return this.farGeometryCache.get(geometry) ?? geometry; }
+
   /**
    * 路边停靠车合并渲染用：模板各 mesh 几何烘焙到车根坐标系、按材质分组（懒构建缓存）。
    * 返回的几何/材质均为共享模板，调用方 clone 几何后使用、不得释放材质。
@@ -205,13 +244,10 @@ export class CarLibrary {
     let parts = this.baked.get(type);
     if (parts) return parts;
     if (type !== 'police' && type !== 'sedan-sports') {
-      const originalPaint = (this.templates.get('sedan-sports')!.getObjectByName('body') as THREE.Mesh).material;
-      const paint = (this.templates.get(type)!.getObjectByName('body') as THREE.Mesh).material as THREE.Material;
-      parts = this.bakedParts('sedan-sports').map(part => ({
-        geometry: part.geometry, material: part.material === originalPaint ? paint : part.material,
-      }));
-      this.baked.set(type, parts);
-      return parts;
+      const originalPaint=(this.templates.get('sedan-sports')!.getObjectByName('body') as THREE.Mesh).material;
+      const paint=(this.templates.get(type)!.getObjectByName('body') as THREE.Mesh).material as THREE.Material;
+      parts=this.bakedParts('sedan-sports').map(part=>({geometry:part.geometry,material:part.material===originalPaint?paint:part.material}));
+      this.baked.set(type,parts);return parts;
     }
     const template = this.templates.get(type);
     if (!template) throw new Error(`未加载的车型: ${type}`);
@@ -244,6 +280,7 @@ export class CarLibrary {
    * 悬挂射线的组合下会触发 Rapier WASM panic（实测崩过）。
    */
   colliderBoxes(type: CarType): CarBoxes {
+    if(type!=='police'&&type!=='sedan-sports')return this.colliderBoxes('sedan-sports');
     let spec = this.boxCache.get(type);
     if (spec) return spec;
     let minX = Infinity, maxX = -Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -502,16 +539,13 @@ export async function loadTankModel(): Promise<THREE.Group> {
 
 // ============ 人物模型库（KayKit Adventurers，CC0，见 ASSETS.md） ============
 
-export type PersonType = 'Knight' | 'Barbarian' | 'Mage' | 'Rogue' | 'Rogue_Hooded';
+export type PersonType = 'adventurer' | 'animated-woman' | 'man';
 export const ALL_PERSON_TYPES: PersonType[] = [
-  'Knight',
-  'Barbarian',
-  'Mage',
-  'Rogue',
-  'Rogue_Hooded',
+  'animated-woman',
+  'man',
 ];
 
-const PERSON_HEIGHT = 1.8; // 统一身高（米）
+const PERSON_HEIGHT = 1.76; // 统一身高（米）
 
 export interface PersonInstance {
   root: THREE.Group;
@@ -532,9 +566,10 @@ export class PersonLibrary {
   static async load(): Promise<PersonLibrary> {
     const lib = new PersonLibrary();
     const loader = new GLTFLoader();
+    const swimming = await loadSwimAnimations();
     await Promise.all(
-      ALL_PERSON_TYPES.map(async (type) => {
-        const gltf = await loader.loadAsync(`/models/characters/${type}.glb`);
+      (['adventurer', ...ALL_PERSON_TYPES] as PersonType[]).map(async (type) => {
+        const gltf = await loader.loadAsync(`/assets/poly-pizza-people/${type}.glb`);
         const inner = gltf.scene;
         // 隐藏自带的手持武器/盾牌（挂在 handslot 下的网格），统一缩放到目标身高、脚底对齐原点
         inner.traverse((o) => {
@@ -544,13 +579,16 @@ export class PersonLibrary {
           }
         });
         const box = new THREE.Box3().setFromObject(inner);
-        const s = PERSON_HEIGHT / (box.max.y - box.min.y);
+        const s = (type === 'adventurer' ? 1.86 : PERSON_HEIGHT) / (box.max.y - box.min.y);
         inner.scale.setScalar(s);
         inner.position.y = -box.min.y * s;
         inner.rotation.y = Math.PI; // 模型面朝 +Z → 本项目约定面朝 -Z
         const template = new THREE.Group();
         template.add(inner);
-        lib.templates.set(type, { scene: template, clips: gltf.animations });
+        template.name = `ImportedPerson-${type}`;
+        const clips = adaptPersonClips(template, gltf.animations);
+        clips.push(...retargetSwimAnimations(template, swimming));
+        lib.templates.set(type, { scene: template, clips });
       }),
     );
     return lib;
@@ -568,7 +606,14 @@ export class PersonLibrary {
     }
     let handSlotR: THREE.Object3D | null = null;
     root.traverse((o) => {
-      if (o.name === 'handslot.r' || o.name === 'handslotr') handSlotR = o;
+      if (['wristr', 'palmr'].includes(o.name.replaceAll('.', '').toLowerCase())) {
+        const anchor = new THREE.Group();
+        anchor.name = 'WeaponAnchor';
+        const scale = o.getWorldScale(new THREE.Vector3());
+        anchor.scale.set(1 / scale.x, 1 / scale.y, 1 / scale.z);
+        o.add(anchor);
+        handSlotR = anchor;
+      }
     });
     return { root, mixer, actions, handSlotR };
   }

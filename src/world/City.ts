@@ -1,5 +1,7 @@
 ﻿import type { CarType } from '../core/Loader';
 
+import { generateShanghaiChunk, isShanghaiCore, roadAvailable, BRIDGE_Z } from './ShanghaiLayout';
+
 export const BLOCK_SIZE = 24; // 街区地皮边长
 const ROAD_WIDTH = 8;
 export const PITCH = BLOCK_SIZE + ROAD_WIDTH; // 街区中心间距
@@ -19,9 +21,7 @@ const OCEAN_FLOOR_Y = -1.8;
 export const CITY_MIN_BLOCK_X = (COAST_CX + 1) * CHUNK_SIZE - PITCH;
 
 export function chunkZone(cx: number): ChunkZone {
-  if (cx > COAST_CX) return 'city';
-  if (cx === COAST_CX) return 'beach';
-  return 'ocean';
+  return cx === 1 ? 'ocean' : 'city';
 }
 
 // —— 路网寻路共用约定（Traffic / Wanted）——
@@ -67,7 +67,12 @@ export function advanceOnRoad(
     const line = snapToRoad(prevAlong + step * 0.5 + Math.sign(step) * 0.01);
     const crossed = (prevAlong < line && along >= line) || (prevAlong > line && along <= line);
     if (crossed) {
-      const newDir = pickDir(car.dir, car.currPos.x, car.currPos.z);
+      let newDir = pickDir(car.dir, car.currPos.x, car.currPos.z);
+      const ix = snapToRoad(car.currPos.x), iz = snapToRoad(car.currPos.z);
+      if (!roadAvailable(ix + DIR_X[newDir]! * 22, iz + DIR_Z[newDir]! * 22)) {
+        newDir = [car.dir, (car.dir + 1) % 4, (car.dir + 3) % 4, (car.dir + 2) % 4]
+          .find(dir => roadAvailable(ix + DIR_X[dir]! * 22, iz + DIR_Z[dir]! * 22)) ?? (car.dir + 2) % 4;
+      }
       if (newDir !== car.dir) {
         // 旧行进轴坐标定在路口线，横轴吸附到新道路的右车道
         if (car.dir % 2 === 0) {
@@ -188,6 +193,18 @@ function chunkSeed(cx: number, cz: number): number {
  * 纯函数、确定性，不碰 three/rapier。
  */
 export function generateChunk(cx: number, cz: number): ChunkData {
+  if (isShanghaiCore(cx, cz)) return generateShanghaiChunk(cx, cz);
+  if (cx === 1) {
+    const boxes: BoxInstance[] = [];
+    for (const z of BRIDGE_Z) if (Math.abs(z - cz * 96) < 48) {
+      boxes.push({ x: 96, z, w: 96, d: 12, h: .45, base: -.4, color: 0x515958, solid: true });
+      for (const side of [-1, 1]) {
+        boxes.push({ x: 96, z: z + side * 6.1, w: 96, d: .35, h: 1.15, base: .05, color: 0xa8b6b2, solid: true });
+        boxes.push({ x: 96, z: z + side * 4.7, w: 96, d: .12, h: .015, base: .06, color: 0xdac99d, solid: false });
+      }
+    }
+    return { boxes, props: [], cars: [], doors: [], stairs: [] };
+  }
   const rand = mulberry32(chunkSeed(cx, cz));
   const boxes: BoxInstance[] = [];
   const doors: DoorSpec[] = [];

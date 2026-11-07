@@ -40,3 +40,18 @@
 | Kenney Impact Sounds 音效 ×18 | `public/sounds/`（step/punch/crash/thud 系列） | 脚步、行人被击、车祸金属声、落地闷响 | 来源 https://kenney.nl/assets/impact-sounds ，许可 CC0 | ✅ 已接入 |
 | 引擎循环采样 | `public/sounds/engine_loop.wav` | 驾驶引擎声（随车速变调） | 来源 https://opengameart.org/content/racing-car-engine-sound-loops ，许可 CC0 | ✅ 已接入 |
 | 车辆杂音效 ×4 | `public/sounds/`（horn/door_open/door_close/engine_start） | 喇叭、上下车车门、点火 | 来源 https://opengameart.org/content/car-sound-effects-pack-low-quality ，许可 CC0 | ✅ 已接入 |
+
+
+## Imported vehicle fleet
+
+人物也已从同一源项目导入：玩家使用 Adventurer，路人使用 Animated Woman 和 Man，任务人物和警员同步替换。授权信息见 [imported-people](public/licenses/imported-people.md)。
+
+Nine vehicle models and the helicopter rotor texture copied from `D:/AI/gpt/game/gta5/public/assets` into `public/assets`. Attribution and source terms: [imported-vehicles](public/licenses/imported-vehicles.md).
+
+
+## 游泳动画接入与 Ferrari 恢复（后续修正）
+
+- 当前七款非警用车继续使用用户原指定的 Ferrari 模型和颜色，不再采用上一轮临时换回的 Kenney 车型。原模型不改写，新增 ferrari-lod.json 保存同源远景简化索引；近处和驾驶使用原完整模型。
+- 游泳使用 Quaternius Universal Animation Library 免费 Standard 版的 Swim_Fwd_Loop、Swim_Idle_Loop 和参考 A_TPose，CC0 1.0。官方来源 https://quaternius.com/packs/universalanimationlibrary.html ，原版免费包镜像 https://github.com/J-Ponzo/gltf-universal-animation-library 。仅提取所需动作和骨架，在现有人物上重定向。
+- 本地资源及完整许可证：public/animations/quaternius/swimming.json、LICENSE.txt；修改与来源记录见同目录 README.md。全部资源本地运行。
+- 当前修正详情：[游泳与 Ferrari 修正](SWIMMING_AND_FERRARI_FIX.md)。

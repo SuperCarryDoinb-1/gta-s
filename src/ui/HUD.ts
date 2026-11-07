@@ -204,6 +204,8 @@ export class HUD {
     const stateLabel =
       data.state === 'drive'
         ? '🚗 驾驶'
+        : data.state === 'dive'
+          ? '潜水'
         : data.state === 'swim'
           ? '🌊 游泳'
           : data.state === 'jump'
@@ -223,6 +225,6 @@ export class HUD {
       `<div style="${dim}">frame ${data.frameAvgMs.toFixed(1)}ms (峰值 ${data.frameMaxMs.toFixed(0)}) · 物理 ${data.physMs.toFixed(1)}ms</div>` +
       `<div style="${dim}">draw ${data.drawCalls} · dpr ${data.pixelRatio.toFixed(2)} · ` +
       `坐标 ${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)}</div>` +
-      `<div style="${dim}">N 快进 · R 天气 · F 喇叭 · H 帮助</div>`;
+      `<div style="${dim}">G 拾取 · I 背包 · B 绷带 · H 帮助</div>`;
   }
 }

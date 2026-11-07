@@ -12,6 +12,7 @@ const SUN_DUSK = new THREE.Color(0xff9550);
 const MOON = new THREE.Color(0x9db4ff);
 
 export interface Environment {
+  setWaterDepth(depth: number): void;
   /** 每帧调用：推进昼夜、更新光照/天空/雾，并让光照跟随玩家。rain 为雨量 0~1 */
   update(dt: number, target: THREE.Vector3, rain?: number): void;
   /** 快进时间（0~1 的昼夜比例，0.08 ≈ 2 小时） */
@@ -27,15 +28,16 @@ export interface Environment {
  * 太阳沿东西向圆轨道运行，落山后切换为高角度微弱月光（保证夜间阴影方向稳定）。
  */
 export function setupEnvironment(scene: THREE.Scene): Environment {
-  scene.fog = new THREE.Fog(FOG_DAY.getHex(), 80, 300);
+  scene.fog = new THREE.Fog(FOG_DAY.getHex(), 120, 650);
 
   const sky = new Sky();
+  sky.name='Atmosphere-Sky';
   sky.scale.setScalar(900);
   const skyUniforms = sky.material.uniforms;
   skyUniforms['turbidity']!.value = 6;
   skyUniforms['rayleigh']!.value = 2.2;
-  skyUniforms['mieCoefficient']!.value = 0.004;
-  skyUniforms['mieDirectionalG']!.value = 0.8;
+  skyUniforms['mieCoefficient']!.value = 0.0015;
+  skyUniforms['mieDirectionalG']!.value = 0.7;
   scene.add(sky);
 
   const hemi = new THREE.HemisphereLight(0x87b5d5, 0xb0a890, 0.6);
@@ -61,12 +63,15 @@ export function setupEnvironment(scene: THREE.Scene): Environment {
 
   let time01 = START_TIME;
   let night = 0;
+  let waterDepth = 0;
+  const underwaterColor = new THREE.Color(0x28635f);
   const sunDir = new THREE.Vector3();
   const lightDir = new THREE.Vector3();
   const moonDir = new THREE.Vector3(-0.35, 0.75, -0.3).normalize();
   const fogColor = new THREE.Color();
 
   return {
+    setWaterDepth(depth: number): void { waterDepth = Math.max(0, depth); },
     get nightFactor(): number {
       return night;
     },
@@ -100,15 +105,25 @@ export function setupEnvironment(scene: THREE.Scene): Environment {
       sun.intensity = (1.9 * day + 0.14) * (1 - 0.55 * rain);
       sun.color.copy(SUN_DAY).lerp(SUN_DUSK, horizon).lerp(MOON, night);
 
-      hemi.intensity = (0.55 * day + 0.09) * (1 - 0.3 * rain);
-      ambient.intensity = 0.15 * day + 0.06;
+      hemi.intensity = (0.7 * day + 0.12) * (1 - 0.3 * rain);
+      ambient.intensity = 0.28 * day + 0.09;
 
       // 雨雾：更浓更灰（夜里保留夜色基调）
       fogColor.copy(FOG_DAY).lerp(FOG_NIGHT, night).lerp(FOG_RAIN, rain * (1 - night * 0.65));
       const fog = scene.fog as THREE.Fog;
       fog.color.copy(fogColor);
-      fog.near = 80 - 38 * rain;
-      fog.far = 300 - 115 * rain;
+      fog.near = 120 - 60 * rain;
+      fog.far = 650 - 220 * rain;
+      const waterBlend = THREE.MathUtils.smoothstep(waterDepth, .05, .8);
+      if (waterBlend > 0) {
+        fog.color.lerp(underwaterColor, waterBlend);
+        fog.near = THREE.MathUtils.lerp(fog.near, .4, waterBlend);
+        fog.far = THREE.MathUtils.lerp(fog.far, Math.max(32,60-waterDepth), waterBlend);
+        sun.color.lerp(underwaterColor,waterBlend*.45);
+        hemi.intensity *= 1-waterBlend*.15;
+      }
+      sky.visible=waterBlend<.5;
+      scene.background=waterBlend>.1 ? fog.color : null;
 
       skyUniforms['sunPosition']!.value.copy(sunDir);
       skyUniforms['turbidity']!.value = 6 + 10 * rain; // 阴沉天

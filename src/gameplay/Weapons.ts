@@ -5,6 +5,7 @@ import type { GameAudio } from '../core/Audio';
 import type { Character } from '../entities/Character';
 import type { Pedestrians } from '../entities/Pedestrians';
 import { makeTracer } from './fx';
+import { SurvivalInventory, type SurvivalWeapon } from './SurvivalInventory';
 
 export type WeaponKind = 'none' | 'pistol' | 'mg' | 'grenade';
 
@@ -43,6 +44,7 @@ export class WeaponSystem {
 
   /** 犯罪上报（通缉系统挂钩）：开火/爆炸时回调 */
   onCrime: ((kind: 'gunshot' | 'explosion', x: number, z: number) => void) | null = null;
+  onExplosion: ((center: THREE.Vector3) => void) | null = null;
   /** 爆炸波及玩家自己：伤害 + 爆心→玩家的水平方向（击退用） */
   onPlayerBlast: ((dmg: number, dirX: number, dirZ: number) => void) | null = null;
   /** 子弹命中动态刚体上报（行人/警察扣血挂钩），dmg 为该武器伤害 */
@@ -62,7 +64,9 @@ export class WeaponSystem {
   private readonly grenades: Grenade[] = [];
   private readonly effects: Effect[] = [];
   /** 弹药（打空后需到武器店补给） */
-  private readonly ammo = { pistol: 24, mg: 60, grenade: 2 };
+  private readonly ammo: SurvivalInventory['ammo'];
+  private readonly inventory: SurvivalInventory;
+  onNotice: ((text: string) => void) | null = null;
 
   // 手部武器模型
   private readonly pistolMesh: THREE.Group;
@@ -96,7 +100,10 @@ export class WeaponSystem {
     character: Character,
     peds: Pedestrians,
     heavyBodies: import('@dimforge/rapier3d-compat').RigidBody[],
+    inventory: SurvivalInventory,
   ) {
+    this.inventory = inventory;
+    this.ammo = inventory.ammo;
     this.scene = scene;
     this.physics = physics;
     this.camera = camera;
@@ -141,12 +148,16 @@ export class WeaponSystem {
         ? `机枪 ${this.ammo.mg}发`
         : this.current === 'grenade'
           ? `手雷 ×${this.ammo.grenade}`
-          : '';
+          : '徒手 · 搜索装备';
   }
 
   /** 补给弹药（武器店购买） */
-  addAmmo(kind: 'pistol' | 'mg' | 'grenade', n: number): void {
-    this.ammo[kind] += n;
+  addAmmo(kind: SurvivalWeapon, n: number): string | null {
+    return this.inventory.collect(kind === 'pistol' ? 'pistolAmmo' : kind === 'mg' ? 'mgAmmo' : 'grenade', n);
+  }
+
+  owns(kind: SurvivalWeapon): boolean {
+    return this.inventory.has(kind);
   }
 
   ammoOf(kind: 'pistol' | 'mg' | 'grenade'): number {
@@ -155,9 +166,12 @@ export class WeaponSystem {
 
   /** 每帧调用（渲染帧） */
   update(dt: number, driving: boolean): void {
-    if (this.input.wasPressed('Digit1')) this.toggle('pistol');
-    if (this.input.wasPressed('Digit2')) this.toggle('mg');
-    if (this.input.wasPressed('Digit3')) this.toggle('grenade');
+    if (!driving) {
+      if (this.input.wasPressed('Digit1')) this.toggle('pistol');
+      if (this.input.wasPressed('Digit2')) this.toggle('mg');
+      if (this.input.wasPressed('Digit3')) this.toggle('grenade');
+    }
+    if (this.current === 'grenade' && this.ammo.grenade <= 0) this.current = 'none';
     if (driving && this.current !== 'none') this.current = 'none';
 
     this.character.setPose(this.current);
@@ -196,8 +210,17 @@ export class WeaponSystem {
     this.updateEffects(dt);
   }
 
-  private toggle(kind: WeaponKind): void {
+  toggle(kind: WeaponKind): void {
+    if (kind !== 'none' && !this.inventory.has(kind)) {
+      this.onNotice?.('尚未获得该武器，请先搜索物资');
+      return;
+    }
     this.current = this.current === kind ? 'none' : kind;
+  }
+
+  holster(): void {
+    this.current = 'none'; this.character.setPose('none');
+    this.pistolMesh.visible = this.mgMesh.visible = this.grenadeMesh.visible = false;
   }
 
   /**
@@ -302,6 +325,7 @@ export class WeaponSystem {
   private explode(center: THREE.Vector3): void {
     this.audio.explosion();
     this.onCrime?.('explosion', center.x, center.z);
+    this.onExplosion?.(center);
 
     // 火球特效
     const flash = new THREE.Mesh(this.flashGeo, this.flashMat.clone());

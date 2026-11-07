@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "report": {
+    "waterChunks": 5,
+    "texturedMeshes": 406,
+    "waterRGBA": [
+      92,
+      104,
+      63,
+      255
+    ],
+    "renderPipeline": "direct-msaa"
+  },
+  "errors": [],
+  "shaderErrors": []
+}

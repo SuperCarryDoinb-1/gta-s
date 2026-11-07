@@ -36,7 +36,7 @@ try {
  await page.screenshot({path:'scratchpad/drone-mobile.png'});
  await page.setViewportSize({width:1440,height:900});
  await page.locator('#start-btn').click();
- await page.waitForFunction(()=>!document.querySelector('.menu-drone'));
+ await page.waitForFunction(()=>document.querySelector('.menu-drone')?.hidden);
  if(errors.length)throw Error(errors.join('\n'));
  console.log('Actual Flying Drone: follow, right-click confirmation, cancel, detach, cleanup passed.');
 } finally {await browser.close();}

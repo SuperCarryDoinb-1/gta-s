@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { Physics, RAPIER, setVel, radialBlastImpulse } from '../core/Physics';
+import { safeRoadX, roadAvailable } from '../world/ShanghaiLayout';
 import {
   PITCH,
   CITY_MIN_BLOCK_X,
-  COAST_CX,
-  CHUNK_SIZE,
   HALF_ROAD,
   DIR_X,
   DIR_Z,
@@ -14,6 +13,7 @@ import {
   advanceOnRoad,
 } from '../world/City';
 import { wrapAngle } from '../core/MathUtil';
+import { driveRoadCar, roadCarBody } from '../entities/AICarPhysics';
 import { playClip, placeSkinnedRoot } from '../core/CharacterAnim';
 import { makeTracer } from './fx';
 import { HealthBar3D } from '../ui/HealthBar3D';
@@ -63,7 +63,7 @@ function pickRandomDir(dir: number): number {
 }
 
 // —— 步行警察 ——
-const COP_RUN = 5.2; // 略慢于玩家疾跑（9），给"跑得掉"的余地
+const COP_RUN = 3.6; // 略慢于玩家疾跑（9），给"跑得掉"的余地
 const COP_SHOOT_RANGE = 13;
 const COP_DESPAWN = 60; // 距玩家超过即收兵
 const COP_DOWN_TIME = 2.5;
@@ -71,7 +71,6 @@ const COP_MAX_HP = 100;
 const COP_KNOCK_DMG = 45; // 被撞/被炸倒地一次的伤害
 const COP_DEAD_TIME = 4.5; // 尸体停留后收回对象池
 const KNOCK_SPEED = 6; // 自身速度突增 → 倒地（被撞/被炸）
-const OCEAN_EDGE_X = COAST_CX * CHUNK_SIZE - CHUNK_SIZE / 2 + 16; // 警察不下海
 
 const TRACER_LIFE = 0.06;
 const CENTER_ABOVE_FEET = 0.9;
@@ -206,7 +205,7 @@ export class WantedSystem {
       lb.position.set(-0.24, 1.52, -0.25);
       group.add(model, lr, lb);
       const seats = [1, -1].map(side => {
-        const person = personLib.spawn('Mage');
+        const person = personLib.spawn('adventurer');
         person.root.position.set(side * .48, .12, .35);
         person.root.scale.setScalar(.85);
         person.root.rotation.y = Math.PI;
@@ -217,18 +216,20 @@ export class WantedSystem {
       group.visible = false;
       scene.add(group);
 
-      const body = physics.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
+      const body = physics.world.createRigidBody(roadCarBody());
+      physics.registerVehicle(body);
       // 实测双盒碰撞（同交通车）：车身盒+座舱盒，人能站上警车真实车顶
       const spec = carLib.colliderBoxes('police');
       const collider = physics.world.createCollider(
         RAPIER.ColliderDesc.cuboid(spec.body.hx, spec.body.hy, spec.body.hz)
-          .setTranslation(0, spec.body.cy, spec.body.cz),
+          .setTranslation(0, spec.body.cy, spec.body.cz)
+          .setMass(700).setFriction(0.4).setRestitution(0.05),
         body,
       );
       if (spec.cabin) {
         physics.world.createCollider(
           RAPIER.ColliderDesc.cuboid(spec.cabin.hx, spec.cabin.hy, spec.cabin.hz)
-            .setTranslation(0, spec.cabin.cy, spec.cabin.cz),
+            .setTranslation(0, spec.cabin.cy, spec.cabin.cz).setMass(0),
           body,
         );
       }
@@ -271,7 +272,7 @@ export class WantedSystem {
       );
       body.setEnabled(false);
 
-      const person = personLib.spawn('Mage');
+      const person = personLib.spawn('adventurer');
       person.root.visible = false;
       scene.add(person.root);
       // 手枪挂右手（同武器系统的挂法：挂点武器轴 +Y，枪管建在 -Z → 绕 X 转 90°）
@@ -432,7 +433,8 @@ export class WantedSystem {
     if (!car?.active || car.seized) return null;
     car.seized = true; car.speed = 0;
     car.prevPos.copy(car.currPos); car.prevYaw = car.currYaw;
-    car.body.setNextKinematicTranslation(car.currPos);
+    car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    car.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.frameUp(); this.audio.door(true);
     const occupied = car.seats.map((seat, i) => seat.occupied ? i : -1).filter(i => i >= 0);
     let elapsed = 0, completed = 0, closed = false;
@@ -495,6 +497,13 @@ export class WantedSystem {
 
   /** 每物理步结束后调用：采样警察刚体位姿（插值端点） */
   endStep(): void {
+    for (const car of this.cars) {
+      if (!car.active) continue;
+      const p = car.body.translation(), q = car.body.rotation();
+      car.currPos.set(p.x, p.y, p.z);
+      car.currYaw = Math.atan2(2 * q.w * q.y, 1 - 2 * q.y * q.y);
+      car.yaw = car.currYaw;
+    }
     for (const cop of this.cops) {
       if (!cop.active) continue;
       const t = cop.body.translation();
@@ -561,7 +570,11 @@ export class WantedSystem {
   // ================= 警车 =================
 
   private updateCar(car: PoliceCar, dt: number, stars: number): void {
-    if (car.seized) return;
+    if (car.seized) {
+      car.prevPos.copy(car.currPos); car.prevYaw = car.currYaw;
+      driveRoadCar(car.body, car.currPos.x, car.currPos.z, car.currYaw, 0, dt);
+      return;
+    }
     car.prevPos.copy(car.currPos);
     car.prevYaw = car.currYaw;
 
@@ -593,11 +606,12 @@ export class WantedSystem {
     } else {
       // chase
       const playerSpeed = this.driving ? Math.abs(this.playerVehicle!.speedKmh) / 3.6 : 0;
-      const pursuit = 11 + stars * 1.5;
+      const pursuit = 7 + stars;
       const corridorOK =
         Math.abs(px - snapToRoad(px)) < CORRIDOR || Math.abs(pz - snapToRoad(pz)) < CORRIDOR;
 
-      if (dist < DIRECT_RANGE && corridorOK) {
+      if (dist < DIRECT_RANGE && corridorOK && roadAvailable(px, pz) &&
+        roadAvailable(car.currPos.x + Math.sin(car.yaw) * 6, car.currPos.z + Math.cos(car.yaw) * 6)) {
         // 直线逼抢
         car.direct = true;
         const desired = Math.atan2(dx, dz);
@@ -640,13 +654,9 @@ export class WantedSystem {
       }
     }
 
-    car.body.setNextKinematicTranslation({ x: car.currPos.x, y: 0, z: car.currPos.z });
-    car.body.setNextKinematicRotation({
-      x: 0,
-      y: Math.sin(car.currYaw / 2),
-      z: 0,
-      w: Math.cos(car.currYaw / 2),
-    });
+    driveRoadCar(car.body, car.currPos.x, car.currPos.z, car.currYaw, car.speed, dt);
+    car.currPos.copy(car.prevPos);
+    car.currYaw = car.prevYaw;
   }
 
   /** 沿路网行驶：路口选朝向玩家的方向（retreat 时随机），横向渐进回正到车道 */
@@ -733,12 +743,20 @@ export class WantedSystem {
       car.currPos.set(Math.max(sx, CITY_MIN_BLOCK_X), 0, snapToRoad(sz) + LANE_Z[car.dir]!);
     }
     car.speed = 8;
+    const safeX = safeRoadX(car.currPos.x, car.currPos.z);
+    if (safeX !== car.currPos.x) {
+      car.dir = this.playerPos.z > car.currPos.z ? 0 : 2;
+      car.currPos.x = safeX + LANE_X[car.dir]!;
+    }
     car.direct = false;
     car.yaw = Math.atan2(DIR_X[car.dir]!, DIR_Z[car.dir]!);
     car.currYaw = car.yaw;
     car.prevPos.copy(car.currPos);
     car.prevYaw = car.currYaw;
     car.body.setTranslation({ x: car.currPos.x, y: 0, z: car.currPos.z }, false);
+    car.body.setRotation({ x: 0, y: Math.sin(car.currYaw / 2), z: 0, w: Math.cos(car.currYaw / 2) }, true);
+    car.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    car.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
   private deactivateCar(car: PoliceCar): void {
@@ -817,7 +835,7 @@ export class WantedSystem {
     cop.prevQuat.identity();
     cop.currQuat.identity();
     cop.person.root.visible = true;
-    playClip(cop, 'Running_A', false, 1.15);
+    playClip(cop, 'Running_A', false, 0.85);
   }
 
   private despawnCop(cop: Cop): void {
@@ -893,13 +911,13 @@ export class WantedSystem {
 
     if (dist > COP_SHOOT_RANGE) {
       // 追：不下海
-      if (t.x < OCEAN_EDGE_X && nx < 0) {
+      if (!roadAvailable(t.x + nx * 2, t.z + nz * 2)) {
         setVel(cop.body, 0, vel.y, 0);
         playClip(cop, 'Idle');
       } else {
         setVel(cop.body, nx * COP_RUN, vel.y, nz * COP_RUN);
         cop.yaw += wrapAngle(Math.atan2(-nx, -nz) - cop.yaw) * (1 - Math.exp(-10 * dt));
-        playClip(cop, 'Running_A', false, 1.15);
+        playClip(cop, 'Running_A', false, 0.85);
       }
       cop.state = 'run';
     } else {

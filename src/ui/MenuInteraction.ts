@@ -1,4 +1,4 @@
-/** Pointer-only title effects. Owns one capped canvas and releases it on game start. */
+/** Pointer-only title effects. Reuses one canvas and stops drawing outside the homepage. */
 export class MenuInteraction {
   private readonly menu: HTMLElement;
   private readonly canvas = document.createElement('canvas');
@@ -13,7 +13,6 @@ export class MenuInteraction {
   private ripples: { x: number; y: number; age: number }[] = [];
   private enabled = true;
   private inside = false;
-  private disposed = false;
   private frame = 0;
   private lastTime = 0;
   private width = 1;
@@ -41,7 +40,8 @@ export class MenuInteraction {
     window.addEventListener('blur', this.reset, { signal });
     window.addEventListener('resize', this.resize, { signal });
     document.addEventListener('visibilitychange', this.reset, { signal });
-    window.addEventListener('game:started', () => this.dispose(), { once: true, signal });
+    window.addEventListener('game:started', this.reset, { signal });
+    window.addEventListener('game:home', this.reset, { signal });
     window.addEventListener('intro:started', this.reset, { signal });
     this.finePointer.addEventListener('change', this.reset, { signal });
     this.observer = new MutationObserver(this.reset);
@@ -55,7 +55,7 @@ export class MenuInteraction {
   }
 
   private canRun(): boolean {
-    return !this.disposed && this.enabled && this.finePointer.matches &&
+    return this.enabled && this.finePointer.matches &&
       !this.menu.classList.contains('intro-playing') &&
       !document.hidden && document.body.classList.contains('menu-open') &&
       !document.querySelector('dialog[open]');
@@ -171,12 +171,4 @@ export class MenuInteraction {
     this.ctx?.clearRect(0, 0, this.width, this.height);
   };
 
-  private dispose(): void {
-    this.reset();
-    this.disposed = true;
-    this.events.abort();
-    this.observer.disconnect();
-    this.canvas.remove();
-    this.reticle.remove();
-  }
 }

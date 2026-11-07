@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "initial": {
+    "slots": 0,
+    "outfit": "base",
+    "bag": false,
+    "vest": false
+  },
+  "protectedHit": {
+    "hp": 84,
+    "durability": 76,
+    "visible": true,
+    "size": [
+      0.43000060308160926,
+      0.4227918771978505,
+      0.41486346702766497
+    ],
+    "center": [
+      38.999999693131436,
+      1.2726338841554974,
+      -24.02013262547863
+    ],
+    "body": {
+      "x": 39,
+      "y": 0.9709999561309814,
+      "z": -24
+    }
+  },
+  "equippedMotion": {
+    "roll": "Jump_Roll",
+    "jumpY": 2.6043336391448975,
+    "depth": -3.36895489692688,
+    "camera": -3.468906882489394,
+    "armorSize": [
+      0.4399055661618263,
+      0.5082950526200309,
+      0.525726674011743
+    ],
+    "armorVisible": true,
+    "outfit": "workwear"
+  },
+  "rules": {
+    "fullBag": true,
+    "bullet": true,
+    "blast": true,
+    "fallBypass": true,
+    "durability": true,
+    "invulnerability": true
+  },
+  "errors": [],
+  "gpuErrors": []
+}

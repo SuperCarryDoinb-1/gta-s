@@ -14,6 +14,11 @@ import {
 import { DoorSystem } from './Doors';
 import type { CarLibrary, PropLibrary } from '../core/Loader';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { isShanghaiCore } from './ShanghaiLayout';
+import { riverMaterial, updateRiverMaterial } from './RiverMaterial';
+import { shanghaiGround } from './ShanghaiSurfaces';
+import { makeSeabed, makeSeabedRocks } from './Seabed';
+import { setWaterTime } from './WaterDomain';
 
 type Collider = import('@dimforge/rapier3d-compat').Collider;
 
@@ -30,20 +35,6 @@ const COLLIDER_OPS_PER_FRAME = 20;
 const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 const BOX_MATERIAL = new THREE.MeshStandardMaterial();
 // 水面材质：Phong 高光出太阳粼光；近岸浅水偏青透亮、深水浓郁
-const WATER_SHALLOW_MAT = new THREE.MeshPhongMaterial({
-  color: 0x3b8aab,
-  transparent: true,
-  opacity: 0.55,
-  shininess: 140,
-  specular: 0xaaddee,
-});
-const WATER_DEEP_MAT = new THREE.MeshPhongMaterial({
-  color: 0x1f5a82,
-  transparent: true,
-  opacity: 0.68,
-  shininess: 120,
-  specular: 0x88bbdd,
-});
 // 带分段的水面：顶点做波浪动画。波形空间频率取整周期，chunk 拼接处无缝
 const WATER_GEO = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 24, 24);
 const WATER_Y = -0.06;
@@ -138,15 +129,17 @@ POOL_GEO.rotateX(-Math.PI / 2);
 
 /** 全局夜色（0 白天 ~ 1 深夜）：窗灯、路灯灯头、地面光斑 */
 export function setCityNight(n: number): void {
+  updateRiverMaterial(undefined, n);
   for (const f of FACADES) {
     if (f.hasEmission) f.wall.emissiveIntensity = 1.05 * n; // 略过 HDR 阈值，柔和参与辉光
   }
   GLOW_MATERIAL.color.setScalar(0.5 + 1.0 * n);
-  POOL_MATERIAL.opacity = 0.38 * n;
+  POOL_MATERIAL.opacity = 0;
 }
 
 /** 湿度（下雨）：路面变深变亮反光，出现太阳/月光高光条 */
 export function setCityWetness(w: number): void {
+  updateRiverMaterial(undefined, undefined, w);
   CITY_GROUND_MAT.roughness = 0.95 - 0.72 * w;
   CITY_GROUND_MAT.color.setScalar(1 - 0.32 * w);
 }
@@ -285,6 +278,8 @@ class Chunk {
   readonly colliders: Collider[] = [];
   /** 停靠车固定刚体（随 chunk 销毁；removeRigidBody 连带移除其碰撞体） */
   private readonly parkedBodies: import('@dimforge/rapier3d-compat').RigidBody[] = [];
+  private readonly carDetailBatches: Array<{ near: THREE.InstancedMesh; far: THREE.InstancedMesh; entries: Array<{ matrix: THREE.Matrix4; car: number }>; signature: string }> = [];
+  private readonly detailPosition = new THREE.Vector3();
   readonly parkedCars: Array<{ spec: ParkedCarSpec; taken: boolean; hide: () => void }> = [];
   private readonly pending: BoxInstance[];
   private readonly water: THREE.Mesh | null = null;
@@ -326,42 +321,25 @@ class Chunk {
         }
         this.parkedBodies.push(body);
       }
-      const batches = new Map<THREE.BufferGeometry, Map<THREE.Material, THREE.Matrix4[]>>();
-      const m = new THREE.Matrix4();
-      for (const c of cars) {
-        for (const part of carLib.bakedParts(c.type)) {
-          m.makeRotationY(c.rotY).setPosition(c.x, PLOT_HEIGHT, c.z);
-          let byMaterial = batches.get(part.geometry);
-          if (!byMaterial) batches.set(part.geometry, (byMaterial = new Map()));
-          let list = byMaterial.get(part.material);
-          if (!list) byMaterial.set(part.material, (list = []));
-          list.push(m.clone());
+      const batches = new Map<THREE.BufferGeometry, Map<THREE.Material, Array<{ matrix: THREE.Matrix4; car: number }>>>();
+      cars.forEach((c,car) => {
+        for(const part of carLib.bakedParts(c.type)) {
+          let byMaterial=batches.get(part.geometry);
+          if(!byMaterial)batches.set(part.geometry,byMaterial=new Map());
+          let entries=byMaterial.get(part.material);
+          if(!entries)byMaterial.set(part.material,entries=[]);
+          entries.push({matrix:new THREE.Matrix4().makeRotationY(c.rotY).setPosition(c.x,PLOT_HEIGHT,c.z),car});
         }
-      }
-      for (const [geometry, byMaterial] of batches) for (const [mat, matrices] of byMaterial) {
-        const mesh = new THREE.InstancedMesh(geometry, mat, matrices.length);
-        matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix));
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.computeBoundingSphere();
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        scene.add(mesh);
-        this.extraMeshes.push(mesh); // 只释放实例缓冲；车型几何和材质由模型库共享。
-      }
-      for (let i = 0; i < cars.length; i++) {
-        const spec = cars[i]!, body = this.parkedBodies[i]!;
-        const entries: Array<{ mesh: THREE.InstancedMesh; index: number }> = [];
-        for (const mesh of this.extraMeshes) for (let n = 0; n < mesh.count; n++) {
-          mesh.getMatrixAt(n, m);
-          if (Math.abs(m.elements[12]! - spec.x) < .01 && Math.abs(m.elements[14]! - spec.z) < .01) entries.push({ mesh, index: n });
-        }
-        this.parkedCars.push({ spec, taken: false, hide: () => {
-          body.setEnabled(false);
-          for (const entry of entries) {
-            entry.mesh.setMatrixAt(entry.index, new THREE.Matrix4().makeScale(0, 0, 0));
-            entry.mesh.instanceMatrix.needsUpdate = true;
-          }
-        } });
+        this.parkedCars.push({spec:c,taken:false,hide:()=>{
+          this.parkedBodies[car]!.setEnabled(false);this.updateCarDetail(this.detailPosition);
+        }});
+      });
+      for(const [geometry,materials]of batches)for(const [material,entries]of materials) {
+        const near=new THREE.InstancedMesh(geometry,material,entries.length);
+        const far=new THREE.InstancedMesh(carLib.farGeometry(geometry),material,entries.length);
+        near.name='Parked-Ferrari-Full-Detail';far.name='Parked-Ferrari-Distance';
+        for(const mesh of [near,far]){mesh.castShadow=mesh.receiveShadow=true;mesh.count=0;mesh.visible=false;scene.add(mesh);this.extraMeshes.push(mesh);}
+        this.carDetailBatches.push({near,far,entries,signature:''});
       }
     }
 
@@ -393,16 +371,35 @@ class Chunk {
     }
 
     // 城市区：路面标线贴图平面（人行道/车道虚线/斑马线画在贴图里）
-    if (chunkZone(cx) === 'city') {
+    if (chunkZone(cx) === 'city' && !isShanghaiCore(cx, cz)) {
       this.cityGround = new THREE.Mesh(CITY_GROUND_GEO, CITY_GROUND_MAT);
       this.cityGround.position.set(cx * CHUNK_SIZE, 0.004, cz * CHUNK_SIZE);
       this.cityGround.receiveShadow = true;
       scene.add(this.cityGround);
     }
+    if (isShanghaiCore(cx,cz)) {
+      for (const mesh of shanghaiGround(cx,cz)) { scene.add(mesh);this.propMeshes.push(mesh); }
+    }
 
     if (chunkZone(cx) === 'ocean') {
+      const bed=makeSeabed(cx,cz);
+      bed.layers.enable(2);
+      scene.add(bed);this.propMeshes.push(bed);
+      const seabedRocks=makeSeabedRocks(cx,cz);
+      seabedRocks.mesh.layers.enable(2);
+      scene.add(seabedRocks.mesh);this.propMeshes.push(seabedRocks.mesh);
+      for(const rock of seabedRocks.rocks)this.colliders.push(physics.world.createCollider(
+        RAPIER.ColliderDesc.ball(rock.r).setTranslation(rock.x,rock.y,rock.z),
+      ));
+      this.colliders.push(physics.world.createCollider(
+        RAPIER.ColliderDesc.trimesh(
+          bed.geometry.getAttribute('position').array as Float32Array,
+          Uint32Array.from(bed.geometry.index!.array),
+        ).setTranslation(cx*CHUNK_SIZE,0,cz*CHUNK_SIZE),
+      ));
       const nearShore = cx === COAST_CX - 1;
-      this.water = new THREE.Mesh(WATER_GEO, nearShore ? WATER_SHALLOW_MAT : WATER_DEEP_MAT);
+      this.water = new THREE.Mesh(WATER_GEO, riverMaterial);
+      this.water.name = 'Huangpu-Water';
       this.water.rotation.x = -Math.PI / 2;
       this.water.position.set(cx * CHUNK_SIZE, WATER_Y, cz * CHUNK_SIZE);
       scene.add(this.water);
@@ -485,21 +482,50 @@ class Chunk {
   get hasWater(): boolean {
     return this.water !== null;
   }
+  get waterMesh(): THREE.Mesh | null { return this.water; }
+
+  updateCarDetail(position: THREE.Vector3): void {
+    this.detailPosition.copy(position);
+    for(const batch of this.carDetailBatches) {
+      const nearby: THREE.Matrix4[]=[], distant: THREE.Matrix4[]=[];
+      for(const entry of batch.entries) {
+        const car=this.parkedCars[entry.car];if(!car||car.taken)continue;
+        const dx=car.spec.x-position.x,dz=car.spec.z-position.z;
+        (dx*dx+dz*dz+(position.y-1)**2<22*22?nearby:distant).push(entry.matrix);
+      }
+      const signature=batch.entries.map(e=>this.parkedCars[e.car]!.taken?'x':nearby.includes(e.matrix)?'n':'f').join('');
+      if(signature===batch.signature)continue;batch.signature=signature;
+      for(const [mesh,matrices] of [[batch.near,nearby],[batch.far,distant]] as const) {
+        mesh.count=matrices.length;matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));
+        mesh.instanceMatrix.needsUpdate=true;mesh.visible=matrices.length>0;
+        if(mesh.visible){mesh.computeBoundingBox();mesh.computeBoundingSphere();}
+      }
+    }
+  }
 
   /** 建最多 budget 个碰撞体，返回消耗的预算 */
+  buildNearbyColliders(physics: Physics, pos: THREE.Vector3, margin: number): void {
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const box = this.pending[i]!;
+      const dx = Math.max(0, Math.abs(pos.x - box.x) - box.w / 2);
+      const dz = Math.max(0, Math.abs(pos.z - box.z) - box.d / 2);
+      if (dx * dx + dz * dz > margin * margin) continue;
+      this.pending.splice(i, 1); this.addCollider(physics, box);
+    }
+  }
+
+  private addCollider(physics: Physics, b: BoxInstance): void {
+    const desc = RAPIER.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2)
+      .setTranslation(b.x, b.base + b.h / 2, b.z);
+    if (b.rotX) desc.setRotation({ x: Math.sin(b.rotX / 2), y: 0, z: 0, w: Math.cos(b.rotX / 2) });
+    this.colliders.push(physics.world.createCollider(desc));
+  }
+
   buildColliders(physics: Physics, budget: number): number {
     let used = 0;
     while (this.pending.length > 0 && used < budget) {
       const b = this.pending.pop()!;
-      const desc = RAPIER.ColliderDesc.cuboid(b.w / 2, b.h / 2, b.d / 2).setTranslation(
-        b.x,
-        b.base + b.h / 2,
-        b.z,
-      );
-      if (b.rotX) {
-        desc.setRotation({ x: Math.sin(b.rotX / 2), y: 0, z: 0, w: Math.cos(b.rotX / 2) });
-      }
-      this.colliders.push(physics.world.createCollider(desc));
+      this.addCollider(physics, b);
       used++;
     }
     return used;
@@ -542,6 +568,11 @@ class Chunk {
  * 沥青地面是一整块跟随玩家的平面（跨格吸附时才移动）。
  */
 export class ChunkManager {
+  get waterMeshes(): THREE.Mesh[] {
+    const result: THREE.Mesh[] = [];
+    for (const chunk of this.chunks.values()) if (!chunk.dead && chunk.waterMesh) result.push(chunk.waterMesh);
+    return result;
+  }
   private readonly takenCars = new Set<string>();
 
   nearestParked(pos: THREE.Vector3, range: number): { x: number; y: number; z: number; yaw: number; type: ParkedCarSpec['type']; take: () => boolean } | null {
@@ -590,6 +621,14 @@ export class ChunkManager {
   }
 
   /** 每帧调用 */
+  prepareCollisions(pos: THREE.Vector3, margin = 12): void {
+    const cx = Math.round(pos.x / CHUNK_SIZE), cz = Math.round(pos.z / CHUNK_SIZE);
+    if (!this.chunks.has(`${cx},${cz}`)) this.update(pos, 0);
+    for (const chunk of this.chunks.values()) {
+      if (!chunk.dead && !chunk.colliderDone) chunk.buildNearbyColliders(this.physics, pos, margin);
+    }
+  }
+
   update(playerPos: THREE.Vector3, budget: number = COLLIDER_OPS_PER_FRAME): void {
     const pcx = Math.round(playerPos.x / CHUNK_SIZE);
     const pcz = Math.round(playerPos.z / CHUNK_SIZE);
@@ -632,6 +671,7 @@ export class ChunkManager {
     }
 
     // 花预算：先建（玩家正在靠近的），后拆（已远离的）
+    for (const chunk of this.chunks.values()) chunk.updateCarDetail(playerPos);
     let remaining = budget;
     while (remaining > 0 && this.buildQueue.length > 0) {
       const chunk = this.buildQueue[0]!;
@@ -785,6 +825,8 @@ export class ChunkManager {
 
   /** 每帧调用：海面波浪顶点动画（几何共享，所有海洋 chunk 同步起伏且接缝连续）+ 浪花脉动 */
   animateWater(time: number): void {
+    setWaterTime(time);
+    updateRiverMaterial(time);
     // 城市深处没有任何海面可见时整段跳过（625 顶点 + 法线是纯浪费）
     if (this.waterChunks === 0) return;
     const pos = WATER_GEO.attributes.position!;
@@ -798,11 +840,11 @@ export class ChunkManager {
       const a = (x / S) * tau * 3 - time * 1.4;
       const b = ((x + y) / S) * tau * 2 - time;
       const c = (y / S) * tau * 5 + time * 2.1;
-      pos.setZ(i, 0.22 * Math.sin(a) + 0.12 * Math.sin(b) + 0.1 * Math.sin(c));
+      pos.setZ(i, .12 * Math.sin(a) + .065 * Math.sin(b) + .04 * Math.sin(c));
       // 高度是正弦和，偏导有闭式解——解析法线比 computeVertexNormals
       //（逐三角形叉积再平均归一）便宜一个量级，且更精确
-      const dhdx = (0.22 * Math.cos(a) * 3 + 0.12 * Math.cos(b) * 2) * (tau / S);
-      const dhdy = (0.12 * Math.cos(b) * 2 + 0.1 * Math.cos(c) * 5) * (tau / S);
+      const dhdx = (.12 * Math.cos(a) * 3 + .065 * Math.cos(b) * 2) * (tau / S);
+      const dhdy = (.065 * Math.cos(b) * 2 + .04 * Math.cos(c) * 5) * (tau / S);
       const inv = 1 / Math.sqrt(dhdx * dhdx + dhdy * dhdy + 1);
       normal.setXYZ(i, -dhdx * inv, -dhdy * inv, inv);
     }

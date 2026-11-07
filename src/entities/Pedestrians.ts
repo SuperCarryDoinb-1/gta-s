@@ -1,5 +1,6 @@
 ﻿import * as THREE from 'three';
 import { Physics, RAPIER, setVel, radialBlastImpulse } from '../core/Physics';
+import { safePedestrianBlockX } from '../world/ShanghaiLayout';
 import { CITY_MIN_BLOCK_X, PITCH, PLOT_HEIGHT, SIDEWALK_LINE } from '../world/City';
 import { ALL_PERSON_TYPES, type PersonInstance, type PersonLibrary } from '../core/Loader';
 import { wrapAngle } from '../core/MathUtil';
@@ -79,6 +80,11 @@ interface Ped {
  *   每人独立朝向与步行摆动，位置/旋转带渲染插值。
  */
 export class Pedestrians {
+  private enabled = true;
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    for (const p of this.peds) { p.body.setEnabled(enabled); p.person.root.visible = enabled; if (!enabled) p.bar.hide(); }
+  }
   private readonly peds: Ped[] = [];
   /** 刚体句柄 → 行人（子弹伤害查找） */
   private readonly byBody = new Map<number, Ped>();
@@ -143,6 +149,7 @@ export class Pedestrians {
 
   /** 物理步开始：记录插值端点 + AI 驱动速度。需在 physics.step() 前调用 */
   beginStep(dt: number, playerPos: THREE.Vector3, carPos: THREE.Vector3, carVel: THREE.Vector3): void {
+    if (!this.enabled) return;
     this.playerRef.copy(playerPos);
     for (const ped of this.peds) {
       ped.prevPos.copy(ped.currPos);
@@ -154,6 +161,7 @@ export class Pedestrians {
 
   /** 物理步结束：采样新位姿。需在 physics.step() 后调用 */
   endStep(): void {
+    if (!this.enabled) return;
     for (const ped of this.peds) {
       const t = ped.body.translation();
       const r = ped.body.rotation();
@@ -164,6 +172,7 @@ export class Pedestrians {
 
   /** 渲染前：插值位姿写入骨骼模型根节点，并推进各自动画混合器 */
   syncVisual(alpha: number, dt: number): void {
+    if (!this.enabled) return;
     for (const ped of this.peds) {
       placeSkinnedRoot(
         ped.person.root,
@@ -448,6 +457,7 @@ export class Pedestrians {
       CITY_MIN_BLOCK_X,
     );
     ped.bz = Math.round((playerPos.z + Math.sin(angle) * dist) / PITCH) * PITCH;
+    ped.bx = safePedestrianBlockX(ped.bx, ped.bz);
     ped.corner = Math.floor(Math.random() * CORNERS.length);
     ped.dir = Math.random() < 0.5 ? 1 : -1;
     ped.pause = 0;

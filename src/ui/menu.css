@@ -41,9 +41,10 @@ body.menu-open > :not(#app):not(#menu):not(dialog):not(script) { visibility: hid
   position: fixed; inset: 0; z-index: 20; isolation: isolate;
   overflow: auto; background: #0b0c0f; user-select: none;
   display: flex; flex-direction: column;
-  transition: opacity .65s ease, filter .65s ease;
+  transition: opacity .18s ease;
 }
-#menu.leaving { opacity: 0; filter: blur(8px); pointer-events: none; }
+#menu.leaving { opacity: 0; filter: none; pointer-events: none; }
+#menu.returning { opacity: 1; filter: none; transition: none; }
 .hero-art { position: absolute; inset: 0 0 125px 24%; overflow: hidden; z-index: -3; }
 .hero-art img {
   width: 100%; height: 100%; object-fit: cover; object-position: 50% 65%;

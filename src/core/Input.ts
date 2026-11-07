@@ -6,7 +6,7 @@ export interface MouseDelta {
 /**
  * 进入沉浸模式：全屏 + 键盘锁定。必须在用户手势（点击）里调用。
  * 全屏下 Keyboard Lock（Chrome）把 Tab/Alt 等系统键交给页面；
- * Esc 由 Input 自己接管——单按 Esc 即退出沉浸模式（退全屏+释放鼠标）。
+ * Esc 由游戏暂停菜单接管，释放鼠标并暂停游戏。
  */
 export function enterImmersive(): void {
   if (!document.fullscreenElement) {
@@ -32,15 +32,23 @@ export function exitImmersive(): void {
  *   输入法没有组词上下文，英文键不会触发候选窗/上屏（比密码框方案更彻底，
  *   部分国产输入法连密码框的直接输入约定都不遵守）。
  *   另挂 compositionstart 保险：一旦有组词冒头立即打断。
- * - Esc：单按即退出沉浸模式（游戏自己接管，键盘锁定下浏览器不再处理 Esc）。
+ * - 暂停时禁用输入并清空按键，菜单可以正常获取焦点。
  */
 export class Input {
   private readonly down = new Set<string>();
   private readonly pressed = new Set<string>();
+  private jumpPressedAt = -Infinity;
+
+  consumeJumpPress(): boolean {
+    const fresh = performance.now() - this.jumpPressedAt < 160;
+    this.jumpPressedAt = -Infinity;
+    return fresh;
+  }
   private deltaX = 0;
   private deltaY = 0;
   private wheel = 0;
   private locked = false;
+  private enabled = true;
   private readonly element: HTMLElement;
 
   constructor(element: HTMLElement) {
@@ -51,6 +59,12 @@ export class Input {
     this.focusGame();
 
     window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('blur', () => {
+      this.down.clear();
+      this.pressed.clear();
+      this.jumpPressedAt = -Infinity;
+      this.deltaX = this.deltaY = this.wheel = 0;
+    });
     // 保险丝：任何组词开始（不守规矩的输入法）立即打断——失焦可编辑目标即取消组合
     window.addEventListener('compositionstart', this.onComposition);
     window.addEventListener('keyup', this.onKeyUp);
@@ -68,6 +82,7 @@ export class Input {
 
   /** 焦点钉回 canvas（非可编辑元素 = 输入法无组词上下文） */
   private focusGame(): void {
+    if (!this.enabled) return;
     const menu = document.getElementById('menu');
     if (menu && menu.style.display !== 'none' && !menu.classList.contains('leaving')) return;
     this.element.focus({ preventScroll: true });
@@ -78,6 +93,7 @@ export class Input {
   };
 
   private onComposition = (e: CompositionEvent): void => {
+    if (!this.enabled) return;
     const t = e.target;
     if (t instanceof HTMLElement) t.blur(); // 打断组词
     this.focusGame();
@@ -117,8 +133,17 @@ export class Input {
     this.pressed.clear();
   }
 
+  setEnabled(enabled: boolean): void {
+    this.jumpPressedAt = -Infinity;
+    this.enabled = enabled;
+    this.down.clear();
+    this.pressed.clear();
+    this.deltaX = this.deltaY = this.wheel = 0;
+  }
+
   /** 自动化测试注入：模拟按住/松开某键（走与真实输入完全相同的路径） */
   debugHold(code: string, on: boolean): void {
+    if (on && code === 'Space' && !this.down.has(code)) this.jumpPressedAt = performance.now();
     if (on) {
       if (!this.down.has(code)) this.pressed.add(code);
       this.down.add(code);
@@ -128,15 +153,13 @@ export class Input {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    if (!this.enabled) return;
     const menu = document.getElementById('menu');
     if (menu && menu.style.display !== 'none' && !menu.classList.contains('leaving')) return;
-    // 键盘锁定下浏览器不再处理 Esc，游戏自己接管：单按即退出沉浸模式
-    if (e.code === 'Escape') {
-      if (!e.repeat) exitImmersive();
-      return;
-    }
+    if (e.code === 'Escape') return;
     if (this.locked) e.preventDefault();
     if (!e.repeat) this.pressed.add(e.code);
+    if (!e.repeat && e.code === 'Space') this.jumpPressedAt = performance.now();
     this.down.add(e.code);
   };
 
@@ -145,8 +168,10 @@ export class Input {
   };
 
   private onClick = (): void => {
+    if (!this.enabled) return;
     if (!this.locked) {
-      enterImmersive(); // 点画布回到游戏 = 回到沉浸模式（Esc 退出后再点即恢复）
+      this.jumpPressedAt = -Infinity;
+      enterImmersive(); // 全屏切换拒绝锁定时，点击画布重试。
       this.element.requestPointerLock()?.catch(() => {});
     }
   };
@@ -162,13 +187,14 @@ export class Input {
   };
 
   private onMouseMove = (e: MouseEvent): void => {
-    if (!this.locked) return;
+    if (!this.enabled || !this.locked) return;
     this.deltaX += e.movementX;
     this.deltaY += e.movementY;
   };
 
   // 鼠标键记作 'Mouse0'（左）/'Mouse2'（右），与键盘共用 isDown/wasPressed
   private onMouseDown = (e: MouseEvent): void => {
+    if (!this.enabled) return;
     const code = `Mouse${e.button}`;
     if (!this.down.has(code)) this.pressed.add(code);
     this.down.add(code);
@@ -179,6 +205,7 @@ export class Input {
   };
 
   private onWheel = (e: WheelEvent): void => {
+    if (!this.enabled) return;
     this.wheel += e.deltaY;
   };
 }

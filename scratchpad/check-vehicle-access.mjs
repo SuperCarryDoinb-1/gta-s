@@ -25,13 +25,13 @@ try{
   const audio={door(){},gunshot(){}};
   const wanted=new WantedSystem(scene,physics,audio,lib,people,controller,{panicAt(){}});
   const chunks=new ChunkManager(new THREE.Scene(),await Physics.create(),new THREE.Vector3(0,1,0),props,lib);
-  const manager=new PlayerManager(character,controller,owned,traffic,{setExcludeCollider(){}},input);
+  const manager=new PlayerManager(character,controller,owned,traffic,{setExcludeCollider(){},blendTarget(){}},input);
   manager.connectWorldVehicles(wanted,chunks,(x,y,z,yaw,type)=>{const v=new Vehicle(scene,physics,new THREE.Vector3(x,y+.9,z),lib);v.setCarType(type);v.teleportTo(x,z,yaw,y+.9);return v;});
   const car=wanted.cars[0];car.active=true;car.body.setEnabled(true);car.group.visible=true;car.currPos.set(0,0,0);car.prevPos.copy(car.currPos);car.body.setTranslation({x:0,y:0,z:0},false);
   const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(1200,800);renderer.toneMapping=THREE.ACESFilmicToneMapping;document.body.append(renderer.domElement);
   scene.add(new THREE.HemisphereLight(0xffffff,0x445566,2));const light=new THREE.DirectionalLight(0xffffff,2);light.position.set(4,8,5);scene.add(light);
   const camera=new THREE.PerspectiveCamera(45,1.5,.1,2000);camera.position.set(7,4,6);camera.lookAt(0,1,0);
-  const step=()=>{character.beginStep();owned.forEach(v=>v.beginStep());manager.fixedUpdate(1/60);physics.step(1/60);character.endStep();owned.forEach(v=>v.endStep());wanted.endStep();manager.update(1/60);character.animate(1/60,0,true);character.syncVisual(1);owned.forEach(v=>v.syncVisual(1));wanted.update(1/60,1);renderer.render(scene,camera);};
+  const step=()=>{character.beginStep();owned.forEach(v=>v.beginStep());manager.fixedUpdate(1/60);physics.step(1/60);character.endStep();owned.forEach(v=>v.endStep());wanted.endStep();manager.update(1/60);character.animate(1/60,0,true);character.syncVisual(1);owned.forEach(v=>v.syncVisual(1));manager.syncVisual();wanted.update(1/60,1);renderer.render(scene,camera);};
   keys.add('KeyE');manager.update(1/60);if(!manager.isCarjacking)throw Error('Police takeover did not start');
   for(let i=0;i<65;i++)step();
   window.access={THREE,scene,renderer,camera,manager,wanted,character,owned,keys,car,step,chunks,physics};
@@ -46,7 +46,7 @@ try{
   if(wanted.cops.filter(c=>c.active&&!c.car).length!==2)throw Error('Officers were not released into world');
   keys.add('KeyW');for(let i=0;i<180;i++)step();keys.delete('KeyW');
   if(manager.activeVehicle.speedKmh<15)throw Error('Police cannot accelerate');
-  keys.add('KeyE');manager.update();if(manager.isDriving||!character.collider.isEnabled())throw Error('Exit failed');
+  keys.add('KeyE');manager.update();for(let i=0;i<30;i++)step();if(manager.isDriving||!character.collider.isEnabled())throw Error('Exit failed');
   manager.activeVehicle; // primary getter is intentionally different on foot
   const stolen=owned.at(-1);stolen.teleportTo(0,0,0);character.teleport(new THREE.Vector3(1.8,.95,0));
   keys.add('KeyE');manager.update();if(!manager.isDriving||manager.activeVehicle!==stolen)throw Error('Re-entry failed');

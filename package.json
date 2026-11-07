@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:play": "tsc --noEmit && vite build --outDir scratchpad/polish-build --emptyOutDir false",
     "preview": "vite preview"
   },
   "devDependencies": {

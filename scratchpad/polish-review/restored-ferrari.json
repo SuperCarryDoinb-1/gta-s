@@ -1,0 +1,110 @@
+{
+  "tag": "restored-ferrari",
+  "records": [
+    {
+      "scene": "bund",
+      "frames": {
+        "median": 16.69999999999891,
+        "p95": 16.80000000000109,
+        "max": 17.799999999999272
+      },
+      "update": {
+        "median": 1,
+        "p95": 1.5,
+        "max": 4.799999952316284
+      },
+      "calls": {
+        "median": 1043,
+        "p95": 1049,
+        "max": 1050
+      },
+      "triangles": {
+        "median": 1785384,
+        "p95": 1788916,
+        "max": 1788980
+      },
+      "pixelRatio": 1,
+      "geometries": 352,
+      "textures": 290
+    },
+    {
+      "scene": "oldtown",
+      "frames": {
+        "median": 16.69999999999709,
+        "p95": 16.900000000001455,
+        "max": 17
+      },
+      "update": {
+        "median": 0.9000000953674316,
+        "p95": 1.600000023841858,
+        "max": 2.399999976158142
+      },
+      "calls": {
+        "median": 834,
+        "p95": 835,
+        "max": 835
+      },
+      "triangles": {
+        "median": 1333975,
+        "p95": 1335869,
+        "max": 1335869
+      },
+      "pixelRatio": 1,
+      "geometries": 378,
+      "textures": 290
+    },
+    {
+      "scene": "port",
+      "frames": {
+        "median": 16.700000000000728,
+        "p95": 16.80000000000291,
+        "max": 17
+      },
+      "update": {
+        "median": 1,
+        "p95": 1.5,
+        "max": 2.100000023841858
+      },
+      "calls": {
+        "median": 906,
+        "p95": 912,
+        "max": 912
+      },
+      "triangles": {
+        "median": 1296656,
+        "p95": 1299546,
+        "max": 1299682
+      },
+      "pixelRatio": 1,
+      "geometries": 410,
+      "textures": 294
+    },
+    {
+      "scene": "underwater",
+      "frames": {
+        "median": 16.69999999999709,
+        "p95": 17,
+        "max": 17
+      },
+      "update": {
+        "median": 0.8999999761581421,
+        "p95": 1.5,
+        "max": 1.7000000476837158
+      },
+      "calls": {
+        "median": 506,
+        "p95": 519,
+        "max": 519
+      },
+      "triangles": {
+        "median": 766225,
+        "p95": 788212,
+        "max": 789380
+      },
+      "pixelRatio": 1,
+      "geometries": 407,
+      "textures": 294
+    }
+  ],
+  "errors": []
+}

@@ -45,7 +45,8 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('#start-btn').click();
   await page.waitForFunction(() => document.querySelector('#menu').style.display === 'none');
-  if (await page.locator('.interaction-field, .pointer-reticle').count() !== 0) throw new Error('Menu effects were not disposed');
+  if (await page.locator('.interaction-field, .pointer-reticle').count() !== 2) throw new Error('Menu effects were not retained for returning home');
+  if (await page.locator('#menu').isVisible()) throw new Error('Menu effects must be hidden during gameplay');
   await page.waitForTimeout(1500);
   await page.screenshot({ path: 'scratchpad/menu-started.png' });
   console.log(JSON.stringify({ result: 'PASS: pointer parallax, magnet, dialog suspension, motion toggle, cleanup, responsive layouts, start transition', errors }));

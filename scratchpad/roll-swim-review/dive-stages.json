@@ -1,0 +1,24 @@
+{
+  "before": {
+    "body": 0.2691326141357422,
+    "camera": 1.0303918420213227,
+    "state": "swim",
+    "running": true,
+    "enabled": true
+  },
+  "early": {
+    "body": -0.40647855401039124,
+    "camera": 0.38175589794700976,
+    "state": "swim",
+    "running": true,
+    "enabled": true,
+    "control": true
+  },
+  "submerged": {
+    "body": -5.374207973480225,
+    "camera": -4.583862871632706,
+    "depth": 5.330874443054199
+  },
+  "errors": [],
+  "gpuErrors": []
+}

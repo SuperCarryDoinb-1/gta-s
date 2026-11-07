@@ -1,0 +1,149 @@
+{
+  "before": {
+    "stashed": false,
+    "position": {
+      "x": 15.999383926391602,
+      "y": 0.6669936776161194,
+      "z": 26.01239013671875
+    },
+    "body": true,
+    "source": "Ferrari 458 Italia"
+  },
+  "entered": {
+    "driving": true,
+    "favorite": true,
+    "position": {
+      "x": 15.999664306640625,
+      "y": 0.722419261932373,
+      "z": 26.00564193725586
+    },
+    "sportsWheels": true
+  },
+  "drove": {
+    "position": {
+      "x": 16.001338958740234,
+      "y": 0.7238408327102661,
+      "z": 34.43730926513672
+    },
+    "speed": 46.95399279136742
+  },
+  "lod": {
+    "near": [
+      true,
+      false
+    ],
+    "far": [
+      false,
+      true
+    ],
+    "triangles": 358788,
+    "farTriangles": 9077
+  },
+  "parked": {
+    "near": {
+      "near": 14,
+      "far": 0
+    },
+    "far": {
+      "near": 0,
+      "far": 14
+    },
+    "taken": true,
+    "hidden": {
+      "near": 0,
+      "far": 0
+    }
+  },
+  "rigs": [
+    {
+      "type": "adventurer",
+      "source": "Quaternius Universal Animation Library / Swim_Fwd_Loop + Swim_Idle_Loop",
+      "rows": [
+        {
+          "clip": "Swim_Forward",
+          "shinLengthDrift": 0.0018632757858921822,
+          "movingHead": [
+            0.001721252779655089,
+            0.090801918485101,
+            -0.71875036554263
+          ],
+          "duration": 1.3333333730697632
+        },
+        {
+          "clip": "Swim_Idle",
+          "shinLengthDrift": 0.00007711534797638642,
+          "movingHead": [
+            -0.011421205184150018,
+            0.7340433421067757,
+            -0.03597493161700685
+          ],
+          "duration": 3.3333332538604736
+        }
+      ]
+    },
+    {
+      "type": "animated-woman",
+      "source": "Quaternius Universal Animation Library / Swim_Fwd_Loop + Swim_Idle_Loop",
+      "rows": [
+        {
+          "clip": "Swim_Forward",
+          "shinLengthDrift": 0.0018628261956622483,
+          "movingHead": [
+            0.0015826471181372948,
+            0.11983535623749464,
+            -0.5834670073794843
+          ],
+          "duration": 1.3333333730697632
+        },
+        {
+          "clip": "Swim_Idle",
+          "shinLengthDrift": 0.00007836847904563182,
+          "movingHead": [
+            -0.009585767622015467,
+            0.5993213608859765,
+            0.00808125063185123
+          ],
+          "duration": 3.3333332538604736
+        }
+      ]
+    },
+    {
+      "type": "man",
+      "source": "Quaternius Universal Animation Library / Swim_Fwd_Loop + Swim_Idle_Loop",
+      "rows": [
+        {
+          "clip": "Swim_Forward",
+          "shinLengthDrift": 0.0011209558049829482,
+          "movingHead": [
+            -0.010829771277150683,
+            0.27063841956938073,
+            -0.7331290929478593
+          ],
+          "duration": 1.3333333730697632
+        },
+        {
+          "clip": "Swim_Idle",
+          "shinLengthDrift": 0.00006988419252967892,
+          "movingHead": [
+            -0.013974142089236625,
+            0.7794614806083877,
+            0.09701680341821453
+          ],
+          "duration": 3.3333332538604736
+        }
+      ]
+    }
+  ],
+  "swim": {
+    "clip": "Swim_Forward",
+    "pitch": -0.027981263265235062,
+    "body": {
+      "x": 80.20250701904297,
+      "y": -3.2489681243896484,
+      "z": 36
+    },
+    "state": "dive"
+  },
+  "errors": [],
+  "gpuErrors": []
+}

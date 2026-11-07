@@ -1,24 +1,29 @@
 ﻿import * as THREE from 'three';
 import { Engine } from './core/Engine';
-import { Physics } from './core/Physics';
+import { Physics, RAPIER } from './core/Physics';
 import { Input, enterImmersive } from './core/Input';
 import { setupEnvironment } from './world/Scene';
 import { ChunkManager, setCityNight, setCityWetness, updateCitySignals } from './world/ChunkManager';
 import { WeatherSystem } from './world/Weather';
-import { COAST_CX, CHUNK_SIZE, chunkZone } from './world/City';
+import { PEARL, SHANGHAI_SPAWN } from './world/ShanghaiLayout';
+import { ShanghaiWorld } from './world/ShanghaiWorld';
+import { inWaterColumn, seabedHeight, waterSurfaceHeight } from './world/WaterDomain';
+import { ShipTraffic } from './world/ShipTraffic';
+import { WaterRenderer } from './world/WaterRenderer';
 import { Character } from './entities/Character';
 import { CameraRig } from './entities/CameraRig';
 import { Vehicle, MOTO_SPEC, BOAT_SPEC, TANK_SPEC } from './entities/Vehicle';
 import { buildBoatModel } from './entities/BoatMesh';
+import { loadImportedFleet, createImportedFleet } from './entities/ImportedFleet';
 import { Pedestrians } from './entities/Pedestrians';
 import { TrafficSystem } from './entities/Traffic';
 import { CharacterController } from './gameplay/CharacterController';
 import { PlayerManager } from './gameplay/PlayerManager';
 import { HUD, type HUDData } from './ui/HUD';
-import { Minimap } from './ui/Minimap';
+import { DistrictMap } from './ui/DistrictMap';
 import { HelpOverlay } from './ui/Help';
 import { GameAudio } from './core/Audio';
-import { CarLibrary, PersonLibrary, PropLibrary, loadMotoModel, loadTankModel } from './core/Loader';
+import { CarLibrary, PersonLibrary, PropLibrary, loadMotoModel, loadTankModel, type CarType } from './core/Loader';
 import { WeaponSystem } from './gameplay/Weapons';
 import { WantedSystem } from './gameplay/Wanted';
 import { StorySystem } from './gameplay/Story';
@@ -28,18 +33,40 @@ import { Shops } from './gameplay/Shops';
 import { TaxiJobs } from './gameplay/TaxiJobs';
 import { DriftIntro } from './ui/DriftIntro';
 import { menuMotion } from './ui/menuControls';
+import { PauseMenu } from './ui/PauseMenu';
+import { HomeScreen } from './ui/HomeScreen';
+import { SurvivalInventory } from './gameplay/SurvivalInventory';
+import { SurvivalLoot } from './gameplay/SurvivalLoot';
+import './ui/survival.css';
+import { InventoryScreen } from './ui/InventoryScreen';
+import { CharacterAppearance } from './entities/CharacterAppearance';
+import { CharacterPortrait } from './ui/CharacterPortrait';
+import { FlightInstruments } from './ui/FlightInstruments';
+import { SurvivalSites, SHELTER, HOSTILE_CAMP } from './world/SurvivalSites';
+import { HostileCamp } from './gameplay/HostileCamp';
+import { SurvivalSession } from './gameplay/SurvivalSession';
+import { ShelterScreen } from './ui/ShelterScreen';
+import { BattleRoyale } from './gameplay/BattleRoyale';
+import { WorldEvents } from './gameplay/WorldEvents';
+import { addExpansionDetails } from './world/ExpansionDetails';
+import { UrbanPolish } from './world/UrbanPolish';
+import { setupModeMenu } from './ui/ModeMenu';
+
+const battleMode = new URLSearchParams(location.search).get('mode') === 'battle';
+setupModeMenu(battleMode);
 
 const app = document.getElementById('app');
 if (!app) throw new Error('#app container not found');
 
 const engine = new Engine(app);
 const physics = await Physics.create();
-const [carLib, personLib, propLib, motoModel, tankModel] = await Promise.all([
+const [carLib, personLib, propLib, motoModel, tankModel, importedAssets] = await Promise.all([
   CarLibrary.load(),
   PersonLibrary.load(),
   PropLibrary.load(),
   loadMotoModel(),
   loadTankModel(),
+  loadImportedFleet(),
 ]);
 carLib.setupSportsReflections(engine.renderer);
 const input = new Input(engine.renderer.domElement);
@@ -50,35 +77,53 @@ engine.preview = () => {
 const environment = setupEnvironment(engine.scene);
 
 // 出生在路口（街区中心在 ±16+n·32 之外的路网交点），车停在旁边的路上
-const spawnPoint = new THREE.Vector3(16, 2, 16);
+const spawnPoint = new THREE.Vector3(SHANGHAI_SPAWN.x, 2, SHANGHAI_SPAWN.z);
 const chunkManager = new ChunkManager(engine.scene, physics, spawnPoint, propLib, carLib);
+const shanghai = new ShanghaiWorld(engine.scene, physics);
+const survivalSites = new SurvivalSites(engine.scene, physics);
+addExpansionDetails(engine.scene);
+const urbanPolish = new UrbanPolish(engine.scene, physics);
+const shipTraffic = new ShipTraffic(engine.scene, physics);
+const waterRenderer = new WaterRenderer(() => chunkManager.waterMeshes);
 
 const character = new Character(engine.scene, physics, spawnPoint.clone(), personLib);
+// Populate Rapier's query pipeline before placing the character on the floor.
+physics.step(1 / 60);
+character.settleOnGround();
 const cameraRig = new CameraRig(engine.camera, physics, character.collider);
+cameraRig.reset(-Math.PI / 2, 1, -.04);
 const vehicle = new Vehicle(engine.scene, physics, new THREE.Vector3(16, 2, 26), carLib);
 const motorcycle = new Vehicle(engine.scene, physics, new THREE.Vector3(-262, 1.5, 16), carLib, MOTO_SPEC, motoModel);
 // 剧情开局：两辆自有载具都"被偷走了"——暂存待剧情放出
-vehicle.setStashed(true);
+vehicle.setStashed(false);
 motorcycle.setStashed(true);
 // 快艇泊在近海：水中浮力自持,不依赖 chunk 地面,无需暂存
-const boat = new Vehicle(engine.scene, physics, new THREE.Vector3(-345, 0.6, 20), carLib, BOAT_SPEC, buildBoatModel());
+const boat = new Vehicle(engine.scene, physics, new THREE.Vector3(66, 0.6, 48), carLib, BOAT_SPEC, buildBoatModel());
 // 坦克：暂存待命,按 R 空投到玩家面前（从天而降）
 const tank = new Vehicle(engine.scene, physics, new THREE.Vector3(16, 3, 60), carLib, TANK_SPEC, tankModel);
 tank.setStashed(true);
 // 自有载具的统一遍历入口（beginStep/endStep/syncVisual/updateFx/setNight/爆炸波及）
-const ownedVehicles = [vehicle, motorcycle, boat, tank];
+const importedFleet = createImportedFleet(engine.scene, physics, carLib, importedAssets);
+const ownedVehicles = [vehicle, motorcycle, boat, tank, ...importedFleet];
 const pedestrians = new Pedestrians(engine.scene, physics, spawnPoint, personLib);
 const traffic = new TrafficSystem(engine.scene, physics, spawnPoint, carLib);
+if (battleMode) { pedestrians.setEnabled(false); traffic.setEnabled(false); }
 
 const controller = new CharacterController(character, cameraRig, input, (x, z, feetY) =>
   chunkManager.stairHeightAt(x, z, feetY),
 );
 const playerManager = new PlayerManager(character, controller, ownedVehicles, traffic, cameraRig, input);
 const hud = new HUD();
-const minimap = new Minimap();
-new HelpOverlay(); // H 键呼出游戏指南
+const flightInstruments = new FlightInstruments();
+const minimap = new DistrictMap();
+new HelpOverlay(battleMode); // H 键呼出当前模式指南
 const audio = new GameAudio();
 const weather = new WeatherSystem(engine.scene);
+const inventory = new SurvivalInventory();
+const appearance = new CharacterAppearance(character.mesh);
+const portrait = new CharacterPortrait();
+inventory.onAppearanceChange = () => appearance.apply(inventory);
+appearance.apply(inventory);
 const weapons = new WeaponSystem(
   engine.scene,
   physics,
@@ -88,6 +133,7 @@ const weapons = new WeaponSystem(
   character,
   pedestrians,
   ownedVehicles.map((v) => v.chassisBody),
+  inventory,
 );
 const crosshairEl = document.getElementById('crosshair');
 
@@ -103,7 +149,7 @@ const wanted = new WantedSystem(
 );
 const blastTmp = new THREE.Vector3();
 weapons.onCrime = (kind, x, z) => {
-  wanted.reportCrime(kind, x, z);
+  if (!battleMode && Math.hypot(x - HOSTILE_CAMP.x, z - HOSTILE_CAMP.z) > 35) wanted.reportCrime(kind, x, z);
   // 爆炸波及自有载具车况（殉爆可链式,damage 对已报废车免疫故必收敛）
   if (kind === 'explosion') {
     for (const v of ownedVehicles) {
@@ -120,7 +166,7 @@ pedestrians.onHitByPlayerCar = (x, z) => {
 };
 // 子弹命中动态体 → 行人/警察扣血（行人先查，未命中再查警察）
 weapons.onHitBody = (body, dmg) => {
-  if (!pedestrians.applyBulletDamage(body, dmg)) wanted.applyBulletDamage(body, dmg);
+  if (!battle?.applyDamage(body, dmg) && !hostiles.applyDamage(body, dmg) && !pedestrians.applyBulletDamage(body, dmg)) wanted.applyBulletDamage(body, dmg);
 };
 // 车况归零 → 原地殉爆（特效/冲击/自伤与手雷一致）
 for (const v of ownedVehicles) {
@@ -132,9 +178,36 @@ for (const v of ownedVehicles) {
 
 // 主线剧情
 const story = new StorySystem(engine.scene, personLib, vehicle, motorcycle, traffic, wanted);
+// Prepare the next takeover before the player presses E. Geometry and materials
+// are shared; dormant rigid bodies do not participate in simulation.
+const readyCars = new Map<CarType, Vehicle>();
+function prepareCar(type: CarType): Vehicle {
+  const car = new Vehicle(engine.scene, physics, new THREE.Vector3(0, 2, 0), carLib);
+  car.setCarType(type);
+  car.setStashed(true);
+  readyCars.set(type, car);
+  return car;
+}
+for (const type of ['sedan', 'sedan-sports', 'suv', 'suv-luxury', 'taxi', 'hatchback-sports', 'police', 'delivery'] as const) {
+  prepareCar(type);
+}
+function refillCar(type: CarType): void {
+  if (readyCars.has(type)) return;
+  if (playerManager.isTransitioning || playerManager.isCarjacking) {
+    window.setTimeout(() => refillCar(type), 1000);
+    return;
+  }
+  prepareCar(type);
+}
 playerManager.connectWorldVehicles(wanted, chunkManager, (x, y, z, yaw, type) => {
-  const taken = new Vehicle(engine.scene, physics, new THREE.Vector3(x, y + .9, z), carLib);
-  taken.setCarType(type); taken.teleportTo(x, z, yaw, y + .9);
+  const taken = readyCars.get(type) ?? prepareCar(type);
+  readyCars.delete(type);
+  taken.teleportTo(x, z, yaw, y - taken.spec.groundOffset);
+  taken.setStashed(false);
+  window.setTimeout(() => {
+    if ('requestIdleCallback' in window) window.requestIdleCallback(() => refillCar(type));
+    else refillCar(type);
+  }, 1500);
   taken.onExploded = () => {
     taken.getPosition(blastTmp);
     weapons.explodeAt(blastTmp.x, blastTmp.y + .5, blastTmp.z);
@@ -142,23 +215,66 @@ playerManager.connectWorldVehicles(wanted, chunkManager, (x, y, z, yaw, type) =>
   return taken;
 });
 playerManager.onCarjack = () => {
-  wanted.reportCrime('carjack', 0, 0);
-  story.notifyCarjack();
+  if (!battleMode) wanted.reportCrime('carjack', 0, 0);
+  if (!battleMode) story.notifyCarjack();
 };
 
 // 生命值与失败状态：五路伤害源 → HP；归零医院复活
 const health = new HealthSystem();
+health.mitigateDamage = (amount, kind) => {
+  const p = playerManager.isDriving ? playerManager.activeVehicle.chassisBody.translation() : character.body.translation();
+  return !battleMode && kind !== 'impact' && survivalSites.contains(p) ? 0 : inventory.absorbDamage(amount, kind);
+};
+const survivalLoot = new SurvivalLoot(engine.scene, input, audio, inventory, health, !battleMode);
+const hostiles = new HostileCamp(engine.scene, physics, personLib, audio);
+if (battleMode) { hostiles.setEnabled(false); health.enableElimination(); }
+const session = new SurvivalSession(inventory, survivalLoot, health, hostiles, !battleMode);
+const battle = battleMode ? new BattleRoyale(engine.scene, physics, personLib, audio, health, session) : null;
+const worldEvents = !battleMode ? new WorldEvents(engine.scene, physics, session) : null;
+if (battle) battle.onFinish = () => {
+  input.setEnabled(false); engine.stop(); audio.pause(); document.exitPointerLock(); document.body.classList.add('game-ended');
+};
+session.onCarryCleared = () => weapons.holster();
+weapons.onExplosion = center => { hostiles.explosion(center.x, center.y, center.z); battle?.explosion(center); };
+const lootDropPosition = new THREE.Vector3();
+function groundLootPosition(position: { x: number; y: number; z: number }): THREE.Vector3 {
+  lootDropPosition.set(position.x, position.y, position.z);
+  const ray = new RAPIER.Ray({ x: position.x, y: position.y + 1, z: position.z }, { x: 0, y: -1, z: 0 });
+  const hit = physics.world.castRay(ray, 1000, true, RAPIER.QueryFilterFlags.ONLY_FIXED);
+  lootDropPosition.y = hit ? position.y + 1 - hit.timeOfImpact + .05 : 0;
+  return lootDropPosition;
+}
+hostiles.onPlayerHit = amount => wanted.onPlayerHit?.(amount);
+hostiles.onDefeated = (_id, position, cleared) => {
+  const ground = groundLootPosition(position);
+  session.createLoot([{ kind: 'pistolAmmo', count: 24 }, { kind: 'bandage', count: 1 }], ground);
+  if (cleared) session.createLoot([{ kind: 'mg', count: 1 }, { kind: 'mgAmmo', count: 60 }, { kind: 'armor', count: 1, durability: 100 }], new THREE.Vector3(184, .09, -56));
+  survivalLoot.message(cleared ? '货栈已清理，补给已解锁。带回避难所保管。' : '守卫已击败，可以靠近搜集补给');
+  session.save();
+};
+health.onDeath = () => {
+  input.setEnabled(false);
+  if (battle) { battle.playerEliminated(); return; }
+  const p = playerManager.isDriving ? playerManager.activeVehicle.chassisBody.translation() : character.body.translation();
+  session.loseCarriedItems(groundLootPosition(p));
+};
+if (session.loaded) {
+  character.teleport(new THREE.Vector3(SHELTER.x, 2, SHELTER.z));
+  character.settleOnGround(); controller.reset(); cameraRig.reset(-Math.PI / 2, 1, .18);
+}
+weapons.onNotice = text => survivalLoot.message(text);
 wanted.onPlayerHit = (dmg) => {
   // 驾车时车身挡一半子弹,但车况掉
   if (playerManager.isDriving) {
     playerManager.activeVehicle.damage(6);
-    health.damage(dmg * 0.5);
+    health.damage(dmg * 0.5, 'bullet');
   } else {
-    health.damage(dmg);
+    health.damage(dmg, 'bullet');
   }
 };
+if (battle) battle.onPlayerHit = amount => wanted.onPlayerHit?.(amount);
 weapons.onPlayerBlast = (dmg, dx, dz) => {
-  health.damage(dmg);
+  health.damage(dmg, 'blast');
   if (!playerManager.isDriving) controller.knock(dx * 9, dz * 9, 4.5);
 };
 playerManager.onEjected = () => health.damage(25);
@@ -168,9 +284,13 @@ controller.onHardLanding = (v) => {
 };
 health.onRespawn = () => {
   playerManager.forceExit();
-  character.teleport(spawnPoint);
+  character.teleport(new THREE.Vector3(SHELTER.x, 2, SHELTER.z));
+  character.settleOnGround();
   controller.reset();
   wanted.clearAll();
+  cameraRig.reset(-Math.PI / 2, 1, .18);
+  session.save();
+  if (started) input.setEnabled(true);
 };
 
 // 经济闭环：掉钱拾取 + 商店（弹药/喷漆清通缉）+ 出租车载客
@@ -182,6 +302,7 @@ pedestrians.onDropMoney = (x, z) => pickups.spawn(x, 0.5, z, 10 + Math.floor(Mat
 // 开始页面：点击后隐藏、启动音频（需用户手势）、锁定鼠标
 const menu = document.getElementById('menu');
 const startBtn = document.querySelector<HTMLButtonElement>('#start-btn');
+const homeScreen = menu ? new HomeScreen(menu) : null;
 let intro: DriftIntro | null = null;
 if (menu) {
   try {
@@ -190,36 +311,105 @@ if (menu) {
     console.warn('开场动画加载失败，将直接进入游戏。', error);
   }
 }
-if (startBtn) startBtn.disabled = false;
-document.getElementById('start-label')!.textContent = '开始游戏';
-document.getElementById('load-status')!.textContent = '城市已就绪';
 let started = false;
 let startAccepted = false;
+let hasSession = false;
+let preparing = true;
+const inventoryScreen: InventoryScreen = new InventoryScreen({
+  inventory,
+  portrait: () => portrait.capture(engine.renderer, character.mesh),
+  isPlaying: () => started && !health.dead && !shelterScreen.isOpen && !document.body.classList.contains('game-paused') && !document.body.classList.contains('game-ended'),
+  nearby: () => survivalLoot.nearbyItems(),
+  pickup: id => survivalLoot.pickup(id),
+  heal: () => survivalLoot.useBandage(),
+  equip: kind => weapons.toggle(kind),
+  currentWeapon: () => weapons.current,
+  hp: () => health.hp,
+  open: () => {
+    input.setEnabled(false);
+    engine.stop();
+    audio.pause();
+    intro?.dispose(); intro = null;
+    document.exitPointerLock();
+  },
+  close: () => {
+    input.setEnabled(true);
+    audio.resume();
+    engine.start();
+    engine.renderer.domElement.requestPointerLock()?.catch(() => {});
+  },
+});
+const shelterScreen: ShelterScreen = new ShelterScreen({
+  session, inventory,
+  isPlaying: () => !battleMode && started && !health.dead && !inventoryScreen.isOpen && !document.body.classList.contains('game-paused') && !document.body.classList.contains('game-ended'),
+  near: () => !playerManager.isDriving && survivalSites.nearStorage(character.body.translation()),
+  open: () => { input.setEnabled(false); engine.stop(); audio.pause(); document.exitPointerLock(); wanted.clearAll(); },
+  close: () => { input.setEnabled(true); audio.resume(); engine.start(); engine.renderer.domElement.requestPointerLock()?.catch(() => {}); },
+  rest: () => health.heal(100),
+});
+new PauseMenu({
+  isPlaying: () => started && !battle?.finished && !inventoryScreen.isOpen && !shelterScreen.isOpen,
+  soundEnabled: () => audio.soundEnabled,
+  setSoundEnabled: enabled => audio.setSoundEnabled(enabled),
+  pause: () => {
+    input.setEnabled(false);
+    engine.stop();
+    audio.pause();
+    intro?.dispose(); intro = null;
+  },
+  resume: () => {
+    input.setEnabled(true);
+    audio.resume();
+    engine.start();
+    enterImmersive();
+    engine.renderer.domElement.requestPointerLock()?.catch(() => {});
+  },
+  home: () => {
+    started = false;
+    startAccepted = false;
+    input.setEnabled(false);
+    engine.stop();
+    audio.pause();
+    document.getElementById('start-label')!.textContent = '继续游戏';
+    document.getElementById('load-status')!.textContent = '当前进度已保留';
+    homeScreen?.show();
+    window.dispatchEvent(new Event('game:home'));
+  },
+  end: () => {
+    started = false;
+    input.setEnabled(false);
+    engine.stop();
+    audio.stop();
+  },
+});
 function enterGame(): void {
   if (started) return;
   started = true;
   window.dispatchEvent(new Event('game:started'));
   document.body.classList.remove('menu-open');
   engine.preview = null;
-  input.endFrame();
-  menu?.classList.add('leaving');
-  if (menu) {
-    menu.inert = true;
-    window.setTimeout(() => { menu.style.display = 'none'; }, 650);
-  }
+  input.setEnabled(true);
+  homeScreen?.leave();
   audio.start();
-  story.start();
+  audio.resume();
+  session.start();
+  battle?.start();
+  if (!hasSession) survivalLoot.message(battleMode ? '独立竞技对局：空手搜装，G 拾取，圈外持续掉血。活到最后。' : session.loaded ? '已读取存档，从滨江避难所继续。F 打开仓库。' : '空手出发：G 拾取 · I 背包 · 避难所 F 存放物资');
+  hasSession = true;
+  engine.start();
   // Fullscreen transitions can briefly reject pointer lock; clicking the canvas retries.
   engine.renderer.domElement.requestPointerLock()?.catch(() => {});
-  window.setTimeout(() => { intro?.dispose(); intro = null; }, 650);
+  // Keep the stopped intro's buffers until a menu/pause instead of releasing
+  // an entire WebGL scene in the first second of active gameplay.
 }
 startBtn?.addEventListener('click', () => {
   if (startAccepted) return;
   startAccepted = true;
   audio.start();
+  audio.resume();
   enterImmersive();
   const isAutotest = new URLSearchParams(location.search).has('autotest');
-  if (intro && menuMotion && !isAutotest) {
+  if (!hasSession && intro && menuMotion && !isAutotest) {
     audio.engineStart();
     intro.play(enterGame, (speed, skid) => {
       audio.update(speed, speed > 0, speed > 30 ? .9 : .2);
@@ -373,7 +563,7 @@ let physMsShown = 0;
 let waterTime = 0;
 
 // 海滩东边界（沙滩 chunk 列的东缘）
-const BEACH_EDGE_X = COAST_CX * CHUNK_SIZE + CHUNK_SIZE / 2;
+
 const GUIDE_ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'] as const;
 const camForwardTmp = new THREE.Vector3();
 const storyTargetTmp = new THREE.Vector3();
@@ -395,49 +585,52 @@ function guideTo(label: string, tx: number, tz: number): string {
 }
 
 /** 海滩导航（无剧情目标时的兜底） */
-function beachGuide(): string {
-  if (camTarget.x - BEACH_EDGE_X <= 0) return '';
-  return guideTo('海滩', BEACH_EDGE_X, camTarget.z);
+function shanghaiGuide(): string {
+  return guideTo('东方明珠 · 沿江过桥', PEARL.x, PEARL.z);
 }
-
-// 骑手贴装用临时量：面向车头（人面 -Z、车头 +Z → 转半圈）并前倾 24°
-const Z_AXIS = new THREE.Vector3(0, 0, 1);
-const RIDER_FACE = new THREE.Quaternion()
-  .setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI)
-  .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.5));
-const riderQ = new THREE.Quaternion();
-const riderLeanQ = new THREE.Quaternion();
-const riderPos = new THREE.Vector3();
-const barL = new THREE.Vector3();
-const barR = new THREE.Vector3();
 
 const rescueTmp = new THREE.Vector3();
 let wasDriving = false;
 let prevMoveState = 'idle';
 
 engine.setHooks({
+  beforeRender:()=>waterRenderer.render(engine.renderer,engine.scene,engine.camera),
   fixedUpdate: (dt) => {
+    // Physical walls must exist before movement, even while distant colliders
+    // are still being streamed on a rendering budget.
+    if (playerManager.isDriving) playerManager.activeVehicle.getPosition(rescueTmp);
+    else character.getPosition(rescueTmp);
+    chunkManager.prepareCollisions(rescueTmp, playerManager.isDriving ? 18 : 8);
     // 角色陷地/坠落兜底：按分区取合法最低高度——城市/沙滩地面为 0（角色中心应 ≈0.95），
     // 海洋区可游到海床上方。低于阈值即视为已嵌进碰撞体或坠出世界，拉回地表
     if (!playerManager.isDriving) {
       character.getPosition(rescueTmp);
       const sunk =
-        chunkZone(Math.round(rescueTmp.x / CHUNK_SIZE)) === 'ocean'
-          ? rescueTmp.y < -1.6
+        inWaterColumn(rescueTmp.x)
+          ? rescueTmp.y < seabedHeight(rescueTmp.x,rescueTmp.z)-2
           : rescueTmp.y < 0.25;
       if (sunk) {
-        rescueTmp.y = 1.2;
+        rescueTmp.y = inWaterColumn(rescueTmp.x) ? seabedHeight(rescueTmp.x,rescueTmp.z)+1.2 : 1.2;
         character.teleport(rescueTmp);
         controller.reset();
       }
     }
     character.beginStep();
+    const encounterTarget = playerManager.isDriving ? playerManager.activeVehicle.chassisBody : character.body;
+    const encounterPos = encounterTarget.translation();
+    hostiles.fixedUpdate(dt, rescueTmp.set(encounterPos.x, encounterPos.y, encounterPos.z), encounterTarget,
+      started && !health.dead && !survivalSites.contains(encounterPos));
+    shipTraffic.fixedUpdate(dt);
     for (const v of ownedVehicles) v.beginStep();
     playerManager.activeVehicle.getPosition(carPosTmp);
     playerManager.activeVehicle.getLinvel(carVelTmp);
     pedestrians.beginStep(dt, camTarget, carPosTmp, carVelTmp);
     traffic.fixedUpdate(dt, camTarget, carPosTmp);
-    wanted.fixedUpdate(dt, camTarget, playerManager.isDriving, playerManager.activeVehicle);
+    if (!battleMode) wanted.fixedUpdate(dt, camTarget, playerManager.isDriving, playerManager.activeVehicle);
+    if (started && battle) {
+      battle.fixedUpdate(dt, rescueTmp.set(encounterPos.x, encounterPos.y, encounterPos.z), encounterTarget,
+        p => chunkManager.prepareCollisions(p, 8));
+    }
 
     playerManager.fixedUpdate(dt);
     // 驾车撞击：Δv>4 出金属撞击声，Δv>10（≈36km/h 撞墙）掉血
@@ -453,6 +646,7 @@ engine.setHooks({
     character.endStep();
     for (const v of ownedVehicles) v.endStep();
     pedestrians.endStep();
+    traffic.endStep();
     wanted.endStep();
   },
   update: (dt, alpha) => {
@@ -470,32 +664,19 @@ engine.setHooks({
       }
     }
 
-    character.animate(dt, controller.speed, character.grounded, controller.state === 'swim');
+    character.animate(dt, controller.speed, character.grounded, controller.state === 'swim' || controller.state === 'dive', controller.verticalVelocity, controller.airborneTime, controller.isJumping);
     character.syncVisual(alpha);
     for (const v of ownedVehicles) {
       v.syncVisual(alpha);
       v.updateFx(dt);
     }
+    playerManager.syncVisual();
 
-    // 骑手贴装：坐上摩托（坐点偏移 + 面向车头 + 前倾 + 跟随压弯）
-    const rv = playerManager.ridingVehicle;
-    if (rv) {
-      riderLeanQ.setFromAxisAngle(Z_AXIS, rv.visualLean);
-      riderQ.copy(rv.mesh.quaternion).multiply(riderLeanQ);
-      // 落座点/把手坐标来自对 bike.obj 顶点的实测（见 scratchpad/measure-bike.mjs）：
-      // 车把末端在车身系 (±0.17, 0.38, 0.23)；骑手前坐贴油箱，肘部弯曲够把
-      riderPos.set(0, 0.33, 0.22).applyQuaternion(riderQ).add(rv.mesh.position);
-      character.mesh.position.copy(riderPos);
-      character.mesh.quaternion.copy(riderQ).multiply(RIDER_FACE);
-      // 双手 IK 握把：目标即实测把端（微内收），随车身与压弯实时变化
-      // 手部高度对齐头盔下沿（约在骑手头底的水平线上）
-      barL.set(-0.16, 0.85, 0.4).applyQuaternion(riderQ).add(rv.mesh.position);
-      barR.set(0.16, 0.85, 0.4).applyQuaternion(riderQ).add(rv.mesh.position);
-      character.aimArmsAt(barL, barR);
-    }
     pedestrians.syncVisual(alpha, dt);
     traffic.syncVisual(alpha);
     wanted.update(dt, alpha);
+    hostiles.update(dt, alpha, camTarget);
+    battle?.update(dt, alpha);
     story.update(
       dt,
       camTarget,
@@ -506,7 +687,7 @@ engine.setHooks({
     );
     const driving = playerManager.isDriving;
     cameraRig.applyWheel(input.consumeWheel());
-    weapons.update(dt, driving || playerManager.isCarjacking);
+    weapons.update(dt, driving || playerManager.isCarjacking || health.dead);
     if (crosshairEl) {
       crosshairEl.style.display =
         weapons.current !== 'none' && input.pointerLocked && !driving ? 'block' : 'none';
@@ -515,7 +696,7 @@ engine.setHooks({
     if (input.wasPressed('KeyN')) environment.skip(0.06); // 快进约 1.5 小时
     if (input.wasPressed('KeyT')) weather.toggle(); // 手动切换天气
     // R 空投坦克：在玩家视线前方 12m 上空 34m 放下（正在开坦克时忽略,防止砸自己）
-    if (input.wasPressed('KeyR') && !(playerManager.isDriving && playerManager.activeVehicle === tank)) {
+    if (autotestMode === 'tank' && input.wasPressed('KeyR') && !(playerManager.isDriving && playerManager.activeVehicle === tank)) {
       engine.camera.getWorldDirection(camForwardTmp);
       const dropYaw = Math.atan2(camForwardTmp.x, camForwardTmp.z);
       tank.setStashed(false);
@@ -528,15 +709,18 @@ engine.setHooks({
     }
     weather.update(dt, camTarget);
     const wet = weather.wetness;
+    environment.setWaterDepth(inWaterColumn(engine.camera.position.x) ? waterSurfaceHeight(engine.camera.position.x,engine.camera.position.z)-engine.camera.position.y : 0);
     environment.update(dt, camTarget, wet);
     setCityWetness(wet);
     audio.setRain(wet);
     const night = environment.nightFactor;
+    shipTraffic.update(alpha,night);
+      shanghai.update(camTarget, night);
+      urbanPolish.update(camTarget);
     setCityNight(night);
-    for (const v of ownedVehicles) v.setNight(night);
+    for (const v of ownedVehicles) v.setNight(night, v === playerManager.activeVehicle);
     traffic.setNight(night);
     // 辉光：白天极淡，入夜增强，雨夜再加成（湿面反光 + 光晕）
-    engine.setBloom(0.05 + night * 0.24 + night * wet * 0.12);
     chunkManager.update(camTarget);
     chunkManager.doors.update(dt, camTarget);
     waterTime += dt;
@@ -560,7 +744,11 @@ engine.setHooks({
     // 轮胎啸叫：手刹漂移时随车速开阖
     const speedAbs = Math.abs(playerManager.activeVehicle.speedKmh);
     audio.setScreech(driving && input.isDown('Space') && speedAbs > 25 ? Math.min(1, speedAbs / 70) : 0);
-    if (driving) {
+    if (driving && playerManager.activeVehicle.spec.flying) {
+      const aircraft = playerManager.activeVehicle;
+      aircraft.getLinvel(carVelTmp);
+      cameraRig.updateFlight(dt, camTarget, aircraft.mesh.quaternion, carVelTmp, input.consumeMouseDelta());
+    } else if (driving) {
       cameraRig.updateChase(
         dt,
         camTarget,
@@ -568,49 +756,80 @@ engine.setHooks({
         Math.abs(playerManager.activeVehicle.speedKmh),
         input.consumeMouseDelta(),
       );
+    } else if(controller.state==='swim'||controller.state==='dive') {
+      cameraRig.updateSwim(dt,character.getSwimCameraPosition(rescueTmp),input.consumeMouseDelta());
     } else {
       cameraRig.update(dt, camTarget, input.consumeMouseDelta());
     }
+    environment.setWaterDepth(inWaterColumn(engine.camera.position.x) ? waterSurfaceHeight(engine.camera.position.x,engine.camera.position.z)-engine.camera.position.y : 0);
+    environment.update(0,camTarget,wet);
+    // Underwater fog is opaque well before 120 m. Avoid drawing the whole
+    // inland city behind it, and restore the long skyline view on surfacing.
+    const underwaterView = inWaterColumn(engine.camera.position.x) &&
+      engine.camera.position.y < waterSurfaceHeight(engine.camera.position.x, engine.camera.position.z) - .35;
+    const far = underwaterView ? 120 : 1000;
+    if (engine.camera.far !== far) { engine.camera.far = far; engine.camera.updateProjectionMatrix(); }
 
+    flightInstruments.update(dt, driving && started && playerManager.activeVehicle.spec.flying ? playerManager.activeVehicle : null);
     hudData.state = driving ? 'drive' : controller.state;
     hudData.speed = driving ? Math.abs(playerManager.activeVehicle.speedKmh) : controller.speed;
     hudData.speedUnit = driving ? 'km/h' : 'm/s';
     hudData.grounded = character.grounded;
     hudData.pointerLocked = input.pointerLocked;
-    hudData.hint = playerManager.hint;
+    survivalLoot.update(dt, camTarget, driving || playerManager.isCarjacking, started);
+    hudData.hint = !battleMode && !driving && survivalSites.nearStorage(character.body.translation()) ? 'F 打开避难所仓库 · 存放物资 / 休整并保存' : controller.state === 'swim' || controller.state === 'dive'
+      ? `${controller.state === 'dive' ? `水下 ${controller.waterDepth.toFixed(1)}m` : '水面游泳'} · Ctrl 下潜 · 空格 上浮 · Shift 加速`
+      : survivalLoot.hint ? '' : playerManager.hint;
     hudData.weapon = weapons.label;
     // 导航优先级：剧情目标 > 出租车任务 > 海滩兜底
-    const storyLabel = story.targetInfo(storyTargetTmp);
+    const storyLabel = battle && battle.zone.outside(camTarget)
+      ? (storyTargetTmp.set(battle.zone.x, 0, battle.zone.z), '进入安全区')
+      : session.recoveryTarget(storyTargetTmp) ?? survivalLoot.targetInfo(storyTargetTmp);
     const taxiLabel = storyLabel ? null : taxiJobs.targetInfo(storyTargetTmp);
     const guideLabel = storyLabel ?? taxiLabel;
     hudData.guide = guideLabel
       ? guideTo(guideLabel, storyTargetTmp.x, storyTargetTmp.z)
-      : beachGuide();
+      : battleMode ? guideTo('安全区中心', 16, 16) : shanghaiGuide();
     hudData.clock = environment.clock + (weather.wetness > 0.35 ? ' ☔' : '');
     hudData.stars = wanted.stars;
     hudData.evading = wanted.evading;
     health.update(dt);
+    if (started) session.update(dt);
+    if (started && worldEvents) worldEvents.update(dt, camTarget);
     hudData.hp = health.hp;
     hudData.money = health.money;
     hudData.vehicleCond = driving ? playerManager.activeVehicle.condition : -1;
-    pickups.update(dt, camTarget);
-    shops.update(dt, camTarget, driving, driving ? playerManager.activeVehicle : null);
-    taxiJobs.update(
+    if (!battleMode) {
+      pickups.update(dt, camTarget);
+      shops.update(dt, camTarget, driving, driving ? playerManager.activeVehicle : null);
+      taxiJobs.update(
       dt,
       camTarget,
       driving && playerManager.activeVehicle.carType === 'taxi',
       playerManager.activeVehicle.speedKmh,
-    );
+      );
+    }
 
     // 小地图：地形 → 实体点 → 玩家朝向
     if (minimap.begin(camTarget.x, camTarget.z)) {
+      survivalLoot.forEachPoint((x, z, color) => minimap.loot(x, z, color));
+      if (!battleMode) {
+        minimap.service(SHELTER.x, SHELTER.z, '#a6e9b2');
+        minimap.service(-89, 32, '#d5ba93'); minimap.service(187, 192, '#a0bdcb');
+      }
+      worldEvents?.marker((x, z) => minimap.service(x, z, '#91c6ee'));
+      if (battle && battle.state !== 'waiting') {
+        minimap.zone(battle.zone.x, battle.zone.z, battle.zone.state.radius, battle.zone.state.next);
+        battle.forEachBot((x, z) => minimap.dot(x, z, '#ef9c78', 2.5));
+      }
+      hostiles.forEachGuard((x, z) => minimap.dot(x, z, '#fa8567', 2.5));
+      shipTraffic.forEachShip((x,z)=>minimap.dot(x,z,'#7de1ff',3.1));
       traffic.forEachCar((x, z) => minimap.dot(x, z, '#d9dee4', 2.3));
       for (const taken of ownedVehicles.slice(4)) {
         if (taken.stashed || (driving && taken === playerManager.activeVehicle)) continue;
         taken.getPosition(carPosTmp);
         minimap.dot(carPosTmp.x, carPosTmp.z, '#54a8ff', 3);
       }
-      pedestrians.forEachPed((x, z) => minimap.dot(x, z, '#ffb15e', 1.5));
       wanted.forEachUnit((x, z, isCar) =>
         minimap.dot(x, z, isCar ? '#ff5252' : '#ff9c9c', isCar ? 3 : 1.8),
       );
@@ -631,9 +850,9 @@ engine.setHooks({
         minimap.dot(carPosTmp.x, carPosTmp.z, '#a8d178', 3.2);
       }
       if (guideLabel) {
-        minimap.dot(storyTargetTmp.x, storyTargetTmp.z, storyLabel ? '#ffd34d' : '#51ff7e', 3.5);
+        minimap.objective(storyTargetTmp.x, storyTargetTmp.z);
       }
-      shops.forEachShop((x, z, color) => minimap.dot(x, z, color, 2.6));
+      if (!battleMode) shops.forEachShop((x, z, color) => minimap.service(x, z, color));
       engine.camera.getWorldDirection(camForwardTmp);
       minimap.end(camForwardTmp.x, camForwardTmp.z);
     }
@@ -647,8 +866,29 @@ engine.setHooks({
     hud.update(dt, hudData);
 
     input.endFrame();
-    autotestTick?.(); // endFrame 之后：本帧注入的按键留到下一帧被消费
+    if (!preparing) autotestTick?.();
   },
 });
 
+document.getElementById('load-status')!.textContent = '正在预热街区、物资与画面';
+input.setEnabled(false);
+await audio.prepare();
+survivalLoot.prepare(spawnPoint);
+for (let batch = 0; batch < 6; batch++) {
+  for (let step = 0; step < 5; step++) {
+    // Settle cars and fill the physics/animation caches behind the loading menu.
+    engine.prepareStep(1 / 60);
+  }
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+}
+await engine.renderer.compileAsync(engine.scene, engine.camera);
+waterRenderer.prepare(engine.renderer,engine.scene,engine.camera);
+for (let frame = 0; frame < 3; frame++) {
+  engine.warmup();
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+}
+if (startBtn) startBtn.disabled = false;
+document.getElementById('start-label')!.textContent = battleMode ? '开始独立对局' : session.loaded ? '继续存档' : '开始游戏';
+document.getElementById('load-status')!.textContent = battleMode ? '8 人单机竞技 · 1 名玩家 + 7 名 AI · 每局重置装备' : session.loaded ? '已读取本地存档 · 返回避难所继续' : '城市已就绪 · 避难所可存放物资';
+preparing = false;
 engine.start();

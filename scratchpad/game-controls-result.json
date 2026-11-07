@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "checks": [
+    "prewarmed silent home",
+    "trusted start click",
+    "audio running",
+    "real keyboard jump/landing",
+    "pause stops simulation/audio",
+    "input reset",
+    "inventory/pause exclusion",
+    "Esc inventory close",
+    "home return and continue"
+  ],
+  "errors": []
+}

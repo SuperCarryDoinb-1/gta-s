@@ -1,0 +1,87 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'file:///C:/Users/17920/AppData/Local/npm-cache/_npx/c61c9351a0dbcfa7/node_modules/playwright/index.mjs';
+
+const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
+const errors = [];
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  page.on('pageerror', error => errors.push(error.message));
+  page.setDefaultTimeout(60000);
+  await page.goto('http://127.0.0.1:5175/');
+  await page.waitForFunction(() => !document.querySelector('#start-btn').disabled);
+  await page.evaluate(async () => {
+    const { Physics } = await import('/src/core/Physics.ts');
+    const { Input } = await import('/src/core/Input.ts');
+    const { GameAudio } = await import('/src/core/Audio.ts');
+    window.pauseCheck = { steps: 0 };
+    const step = Physics.prototype.step;
+    Physics.prototype.step = function (...args) { window.pauseCheck.steps++; return step.apply(this, args); };
+    const enable = Input.prototype.setEnabled;
+    Input.prototype.setEnabled = function (...args) { window.pauseCheck.input = this; return enable.apply(this, args); };
+    const pause = GameAudio.prototype.pause;
+    GameAudio.prototype.pause = function () { window.pauseCheck.audio = this; return pause.call(this); };
+  });
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#pause-menu').isVisible(), false, 'Esc on home must not open game menu');
+  if (await page.locator('#motion-btn').getAttribute('aria-pressed') === 'true') await page.locator('#motion-btn').click();
+  await page.locator('#start-btn').click();
+  await page.waitForFunction(() => document.querySelector('#menu').style.display === 'none' && window.pauseCheck.steps > 0);
+  await page.keyboard.down('w');
+  await page.keyboard.down('Escape');
+  await page.waitForFunction(() => document.querySelector('#pause-menu').open);
+  for (let i = 0; i < 6; i++) await page.keyboard.down('Escape');
+  await page.keyboard.up('Escape');
+  await page.keyboard.up('w');
+  assert.deepEqual(await page.locator('.pause-actions button').allTextContents(), ['继续游戏', '返回首页', '结束游戏']);
+  await page.waitForFunction(() => window.pauseCheck.audio.ctx.state === 'suspended');
+  const steps = await page.evaluate(() => window.pauseCheck.steps);
+  await page.keyboard.press('r');
+  await page.keyboard.press('1');
+  await page.waitForTimeout(1200);
+  assert.equal(await page.evaluate(() => window.pauseCheck.steps), steps, 'Physics must be frozen');
+  assert.equal(await page.evaluate(() => window.pauseCheck.input.isDown('KeyW') || window.pauseCheck.input.wasPressed('KeyR')), false);
+  assert.equal(await page.evaluate(() => document.pointerLockElement), null);
+  assert.equal(await page.locator('#pause-menu').isVisible(), true, 'Holding Esc must leave menu open');
+  await page.screenshot({ path: 'scratchpad/pause-menu.png' });
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'pause-home');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'pause-resume');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(old => window.pauseCheck.steps > old && !document.querySelector('#pause-menu').open, steps);
+  await page.waitForFunction(() => window.pauseCheck.audio.ctx.state === 'running');
+  // Browser-owned Esc may only emit pointerlockchange; exercise that path directly.
+  await page.waitForFunction(() => document.pointerLockElement !== null);
+  await page.evaluate(() => document.exitPointerLock());
+  await page.waitForFunction(() => document.querySelector('#pause-menu').open);
+  await page.locator('#pause-home').click();
+  await page.waitForFunction(() => document.body.classList.contains('menu-open') && !document.querySelector('#start-btn').disabled);
+  assert.equal(await page.locator('#pause-menu').isVisible(), false);
+  assert.equal(await page.locator('#start-label').textContent(), '继续游戏');
+  assert.equal(await page.evaluate(() => typeof window.pauseCheck), 'object', 'Home must keep the same document');
+  const homeSteps = await page.evaluate(() => window.pauseCheck.steps);
+  await page.waitForTimeout(900);
+  assert.equal(await page.evaluate(() => window.pauseCheck.steps), homeSteps, 'Simulation must remain paused on home');
+  assert.equal(await page.locator('#menu').isVisible(), true, 'Old hide timer must not hide home');
+  console.log('PASS: long Esc, input reset, frozen physics/audio, keyboard navigation, resume, pointer unlock, home');
+  if (await page.locator('#motion-btn').getAttribute('aria-pressed') === 'true') await page.locator('#motion-btn').click();
+  await page.locator('#start-btn').click();
+  await page.waitForFunction(() => document.querySelector('#menu').style.display === 'none');
+  await page.waitForFunction(previous => window.pauseCheck.steps > previous, homeSteps);
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.querySelector('#pause-menu').open);
+  // Simulate a browser refusing close; the fallback must remain usable.
+  await page.evaluate(() => { window.close = () => { window.closeAttempted = true; }; });
+  await page.locator('#pause-quit').click();
+  assert.equal(await page.evaluate(() => window.closeAttempted), true);
+  assert.equal(await page.locator('#pause-title').textContent(), '游戏已结束');
+  assert.equal(await page.locator('#pause-resume').isVisible(), false);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#pause-menu').isVisible(), true);
+  await page.locator('#pause-home').click();
+  await page.waitForFunction(() => document.body.classList.contains('menu-open') && !document.querySelector('#start-btn').disabled);
+  console.log('PASS: restart from home, quit close request, ended fallback, return from ended screen');
+  assert.deepEqual(errors, []);
+} finally {
+  await browser.close();
+}

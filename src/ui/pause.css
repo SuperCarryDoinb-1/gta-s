@@ -1,0 +1,32 @@
+#pause-menu {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 40px));
+  max-height: calc(100dvh - 40px);
+  padding: clamp(24px, 5vw, 38px);
+  overflow-y: auto;
+  color: #f3f1e9;
+  background: linear-gradient(150deg, #20252bf5, #0e1118fa);
+  border: 1px solid #ffffff26;
+  border-top: 3px solid var(--acid);
+  border-radius: 8px;
+  box-shadow: 0 24px 100px #0009;
+  text-align: center;
+}
+#pause-menu::backdrop { background: #05080c99; backdrop-filter: blur(7px); }
+#pause-menu .pause-kicker { margin: 0 0 12px; color: var(--acid); font-size: 11px; letter-spacing: 3px; }
+#pause-menu h2 { margin: 0 0 12px; font-size: 28px; letter-spacing: 3px; }
+#pause-description { margin: 0 0 28px; color: #a8abb0; font-size: 13px; line-height: 1.8; }
+.pause-actions { display: flex; flex-direction: column; gap: 12px; }
+.pause-actions button { width: 100%; min-height: 54px; padding: 14px 20px; border: 1px solid #ffffff26; border-radius: 4px; background: #ffffff08; color: #f3f1e9; font: inherit; font-size: 16px; letter-spacing: 2px; cursor: pointer; }
+.pause-actions button:hover, .pause-actions button:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; background: #e5ff591a; }
+#pause-resume { background: var(--acid); color: #111510; border-color: var(--acid); font-weight: 700; }
+#pause-quit { color: #ffaaa4; }
+#pause-sound { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 48px; margin-top: 22px; padding: 12px 14px; border: 1px solid #ffffff26; border-radius: 4px; color: #f3f1e9; background: #ffffff08; font-size: 14px; }
+#pause-sound:hover, #pause-sound:focus-visible { border-color: var(--acid); outline: 2px solid var(--acid); outline-offset: 3px; }
+#pause-sound-state { min-width: 44px; padding: 4px 10px; border-radius: 20px; color: #111510; background: var(--acid); font-size: 12px; font-weight: 700; }
+#pause-sound[aria-checked="false"] #pause-sound-state { color: #c1c4c8; background: #ffffff1a; }
+#pause-menu .pause-hint { margin: 24px 0 0; color: #a8abb0; font-size: 11px; }
+#pause-menu [hidden] { display: none; }
+body.game-paused #crosshair { visibility: hidden; }
+body.game-ended > :not(#pause-menu) { visibility: hidden; }
+body.game-ended #pause-menu::backdrop { background: #0b0c0f; }

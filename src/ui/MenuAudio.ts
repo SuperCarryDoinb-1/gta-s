@@ -1,4 +1,4 @@
-/** 首页自动尝试播放；浏览器拦截时由首次交互解锁，离开首页后释放。 */
+/** 首页音频在游戏中挂起，返回时复用已加载的音源。 */
 export class MenuAudio {
   private readonly music = new Audio('/sounds/system-overload.ogg');
   private readonly events = new AbortController();
@@ -9,6 +9,7 @@ export class MenuAudio {
   private ending = false;
   private intro = false;
   private lastHover = 0;
+  private finishTimer = 0;
   private readonly button = document.querySelector<HTMLButtonElement>('#music-btn')!;
 
   constructor() {
@@ -30,7 +31,7 @@ export class MenuAudio {
       if ((event.target as Element).closest('#menu button, dialog button')) this.tone(true);
     }, { capture: true, signal });
     document.addEventListener('keydown', event => {
-      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
+      if (this.ending || event.repeat || event.ctrlKey || event.metaKey || event.altKey ||
           (event.target as Element).closest('#music-btn')) return;
       if (this.enabled && !this.unlocked) this.activate();
     }, { signal });
@@ -48,6 +49,13 @@ export class MenuAudio {
       this.fade(.1, .12);
     }, { signal });
     window.addEventListener('game:started', () => this.finish(), { signal });
+    window.addEventListener('game:home', () => {
+      window.clearTimeout(this.finishTimer);
+      this.ending = false;
+      this.intro = false;
+      if (this.enabled) this.activate();
+      else this.refresh();
+    }, { signal });
     this.music.addEventListener('playing', () => this.refresh(), { signal });
     this.music.addEventListener('error', () => {
       this.button.querySelector('span')!.textContent = '音乐重试';
@@ -117,12 +125,10 @@ export class MenuAudio {
   private finish(): void {
     if (this.ending) return;
     this.ending = true;
-    this.events.abort();
     this.fade(0, .55);
-    window.setTimeout(() => {
+    this.finishTimer = window.setTimeout(() => {
       this.music.pause();
-      this.music.removeAttribute('src'); this.music.load(); this.music.remove();
-      void this.ctx?.close().catch(() => {});
+      void this.ctx?.suspend().catch(() => {});
     }, 600);
   }
 }

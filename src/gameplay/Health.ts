@@ -1,3 +1,5 @@
+import type { DamageKind } from './SurvivalInventory';
+
 const MAX_HP = 100;
 const REGEN_DELAY = 6; // 停止受伤后多少秒开始回血
 const REGEN_RATE = 5; // 回血速度（/s）
@@ -13,10 +15,20 @@ const INVULN_TIME = 3; // 复活无敌
  */
 export class HealthSystem {
   hp = MAX_HP;
-  money = 800;
+  money = 0;
+  regenerationEnabled = true;
+  autoRespawn = true;
+
+  enableElimination(): void {
+    this.regenerationEnabled = false; this.autoRespawn = false; this.deathEl.hidden = true;
+    this.deathEl.style.display = 'none';
+  }
 
   /** 复活瞬间回调（main 负责：强制下车、瞬移医院、清通缉） */
   onRespawn: (() => void) | null = null;
+  onDeath: (() => void) | null = null;
+  get dead(): boolean { return this.isDead; }
+  mitigateDamage: ((amount: number, kind: DamageKind) => number) | null = null;
 
   private sinceDamage = 999;
   private invuln = 0;
@@ -44,12 +56,18 @@ export class HealthSystem {
       'font:15px/2 system-ui,sans-serif;';
     this.deathEl.innerHTML =
       '<div style="font-size:30px;letter-spacing:8px;color:#ff5b5b">你倒下了</div>' +
-      `<div style="opacity:.75">医院把你拉了回来 · 费用 $${HOSPITAL_FEE}</div>`;
+      `<div style="opacity:.75">救援后返回避难所 · 医疗费 $${HOSPITAL_FEE}</div><div style="opacity:.65">随身物资留在原地，可返回拾取；仓库物资保留。</div>`;
     document.body.appendChild(this.deathEl);
   }
 
   addMoney(n: number): void {
     this.money += Math.round(n);
+  }
+
+  heal(amount: number): void {
+    if (!this.isDead && Number.isFinite(amount) && amount > 0) {
+      this.hp = Math.min(MAX_HP, this.hp + amount);
+    }
   }
 
   /** 花钱：余额不足返回 false 且不扣 */
@@ -60,16 +78,19 @@ export class HealthSystem {
   }
 
   /** 受伤（死亡/无敌期间免疫） */
-  damage(amount: number): void {
-    if (this.isDead || this.invuln > 0 || amount <= 0) return;
+  damage(amount: number, kind: DamageKind = 'impact'): void {
+    if (this.isDead || this.invuln > 0 || !Number.isFinite(amount) || amount <= 0) return;
+    amount = this.mitigateDamage?.(amount, kind) ?? amount;
+    if (amount <= 0) return;
     this.hp = Math.max(0, this.hp - amount);
     this.sinceDamage = 0;
     this.flash = Math.min(1, 0.45 + amount / 40);
     if (this.hp <= 0) {
       this.isDead = true;
       this.deathTimer = DEATH_TIME;
-      this.money = Math.max(0, this.money - HOSPITAL_FEE);
+      if (this.autoRespawn) this.money = Math.max(0, this.money - HOSPITAL_FEE);
       this.deathEl.style.opacity = '1';
+      this.onDeath?.();
     }
   }
 
@@ -78,14 +99,14 @@ export class HealthSystem {
     this.invuln -= dt;
     this.sinceDamage += dt;
 
-    if (!this.isDead && this.hp < MAX_HP && this.sinceDamage > REGEN_DELAY) {
+    if (this.regenerationEnabled && !this.isDead && this.hp < MAX_HP && this.sinceDamage > REGEN_DELAY) {
       this.hp = Math.min(MAX_HP, this.hp + REGEN_RATE * dt);
     }
 
     this.flash = Math.max(0, this.flash - dt * 1.8);
     this.flashEl.style.opacity = String(Math.min(1, this.flash) * 0.85);
 
-    if (this.isDead) {
+    if (this.isDead && this.autoRespawn) {
       this.deathTimer -= dt;
       if (this.deathTimer <= 0) {
         this.isDead = false;

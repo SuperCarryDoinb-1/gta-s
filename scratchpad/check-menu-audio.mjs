@@ -26,11 +26,11 @@ try {
  await page.locator('#start-btn').click();
  await page.waitForFunction(()=>document.querySelector('#menu').classList.contains('intro-playing'));
  await page.locator('#intro-skip').click();
- await page.waitForFunction(()=>!document.querySelector('#menu-music'));
+ await page.waitForFunction(()=>document.querySelector('#menu-music')?.paused);
  await page.reload({waitUntil:'networkidle'});
  await page.locator('#motion-btn').click();
  await page.locator('#start-btn').click();
- await page.waitForFunction(()=>!document.querySelector('#menu-music'));
+ await page.waitForFunction(()=>document.querySelector('#menu-music')?.paused);
  if(errors.length)throw Error(errors.join('\n'));
  console.log({duration,autoplay,playback:'passed',mute:'passed',reloadDefaultOn:'passed',mobile:'passed',introCleanup:'passed',directStart:'passed',errors});
 }finally{await browser.close();}

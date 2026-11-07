@@ -20,6 +20,7 @@ const CHORD_SECONDS = 4;
 const MUSIC_GAIN = 0.15;
 const ENGINE_GAIN = 0.34;
 const WIND_GAIN = 0.18;
+const AUDIO_SETTING_KEY = 'midnight-pursuit:game-audio-enabled';
 
 // 采样清单：键名 → 变体数，对应 /sounds/<键名><i>.ogg
 const VARIANTS: Record<string, number> = { step: 5, punch: 5, crash: 5, thud: 3 };
@@ -46,6 +47,22 @@ export class GameAudio {
   private hornNode: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private strideAcc = 1.2; // 起步后很快出第一步
   private lastCrash = 0;
+  private enabled = true;
+  private samplesReady: Promise<void> | null = null;
+
+  constructor() {
+    try { this.enabled = localStorage.getItem(AUDIO_SETTING_KEY) !== 'false'; } catch { /* 存储不可用时默认开启。 */ }
+  }
+
+  get soundEnabled(): boolean { return this.enabled; }
+
+  setSoundEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (this.ctx && this.ctx.state !== 'closed') {
+      this.master.gain.setValueAtTime(enabled ? 0.9 : 0, this.ctx.currentTime);
+    }
+    try { localStorage.setItem(AUDIO_SETTING_KEY, String(enabled)); } catch { /* 本次运行内仍然生效。 */ }
+  }
 
   /** 必须在用户手势（点击开始）里调用 */
   start(): void {
@@ -54,7 +71,7 @@ export class GameAudio {
     this.ctx = ctx;
 
     this.master = ctx.createGain();
-    this.master.gain.value = 0.9;
+    this.master.gain.value = this.enabled ? 0.9 : 0;
     this.master.connect(ctx.destination);
 
     // —— 引擎：采样循环（异步加载后挂上）+ 次低频正弦，低通出"车身里听"的闷感 ——
@@ -139,7 +156,27 @@ export class GameAudio {
     screechSrc.start(0, 0.5);
 
     this.nextChordTime = ctx.currentTime + 0.3;
-    void this.loadSamples(ctx);
+    this.samplesReady = this.loadSamples(ctx);
+  }
+
+  /** Allocate/decode behind the loading screen; user interaction resumes playback. */
+  async prepare(): Promise<void> {
+    this.start();
+    await this.ctx?.suspend().catch(() => {});
+    await this.samplesReady;
+  }
+
+  pause(): void {
+    this.setHorn(false);
+    void this.ctx?.suspend().catch(() => {});
+  }
+
+  resume(): void {
+    void this.ctx?.resume().catch(() => {});
+  }
+
+  stop(): void {
+    void this.ctx?.close().catch(() => {});
   }
 
   /** 异步加载全部采样；单个失败静默降级（对应音效不响，不影响其余） */
@@ -163,7 +200,7 @@ export class GameAudio {
     jobs.push(
       load('engine_loop', '/sounds/engine_loop.wav').then(() => {
         const buf = this.buffers.get('engine_loop')?.[0];
-        if (buf && !this.engineSrc) {
+        if (buf && !this.engineSrc && ctx.state !== 'closed') {
           const src = ctx.createBufferSource();
           src.buffer = buf;
           src.loop = true;
